@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ООП — магия dunder</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --stage: #17132e;
+    --card: rgba(255,255,255,0.06);
+    --border: rgba(242,193,78,.35);
+    --text: #f4eedd;
+    --muted: #b3a8d6;
+    --gold: #f2c14e;
+    --violet: #9b7bff;
+    --pink: #ff6ec7;
+    --green: #7fe0a8;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background-color: var(--stage);
+    background-image: radial-gradient(rgba(244,238,221,.5) 1px, transparent 1.4px);
+    background-size: 34px 34px;
+    min-height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  h1, h2, .logo { font-family: Georgia, "Times New Roman", serif; }
+  .blob { position: fixed; width: 480px; height: 480px; filter: blur(120px); opacity: .3; z-index: 0; border-radius: 50%; pointer-events: none; }
+  .b1 { background: #5b3fa8; top: -150px; left: -110px; animation: drift 12s alternate infinite; }
+  .b2 { background: #8a2f5e; bottom: -190px; right: -90px; animation: drift 14s alternate-reverse infinite; }
+  .b3 { background: #8a6a1f; top: 42%; left: 58%; width: 300px; height: 300px; opacity: .35; }
+  @keyframes drift { to { transform: translate(60px, 40px) scale(1.08); } }
+
+  header { z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 28px; }
+  .logo { font-weight: 800; font-size: 19px; }
+  .logo span { background: linear-gradient(90deg, var(--gold), var(--pink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #counter { color: var(--muted); font-variant-numeric: tabular-nums; border: 1px solid var(--border); padding: 4px 12px; border-radius: 999px; }
+  #progressWrap { height: 5px; z-index: 2; background: rgba(255,255,255,.08); }
+  #progress { height: 100%; width: 12%; background: linear-gradient(90deg, var(--violet), var(--gold)); transition: width .35s; box-shadow: 0 0 10px var(--gold); }
+
+  main { flex: 1; z-index: 1; display: grid; place-items: center; padding: 10px 20px 6px; min-height: 0; }
+  .deck { width: min(1080px, 100%); }
+  .slide {
+    display: none; background: var(--card); border: 1px solid var(--border);
+    border-radius: 24px; padding: clamp(22px, 3.5vw, 44px);
+    backdrop-filter: blur(12px);
+    min-height: 64vh; max-height: calc(100vh - 190px); overflow-y: auto; scrollbar-width: thin;
+    animation: in .45s ease;
+  }
+  .slide.active { display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px; align-items: center; }
+  .slide.center { grid-template-columns: 1fr; text-align: center; justify-items: center; }
+  @keyframes in { from { opacity: 0; transform: translateY(14px) scale(.99); } }
+  @media (max-width: 820px) { .slide.active { grid-template-columns: 1fr; } body { overflow: auto; } }
+
+  .kicker { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+    color: #241a05; background: linear-gradient(90deg, var(--gold), #ffe1a1); padding: 7px 14px; border-radius: 999px; margin-bottom: 14px;
+    transform: rotate(-1.5deg); box-shadow: 0 0 14px rgba(242,193,78,.5); }
+  .kicker.violet { background: linear-gradient(90deg, var(--violet), #cdb9ff); transform: rotate(1.2deg); box-shadow: 0 0 14px rgba(155,123,255,.5); }
+  h1 { font-size: clamp(30px, 4.6vw, 54px); line-height: 1.05; margin-bottom: 14px; }
+  h2 { font-size: clamp(24px, 3.2vw, 36px); line-height: 1.12; margin-bottom: 10px; }
+  h2 code, p code, li code { font-family: "Courier New", monospace; font-size: .88em; background: rgba(242,193,78,.14);
+    border: 1px solid var(--border); padding: 1px 7px; border-radius: 7px; color: var(--gold); white-space: nowrap; }
+  h1 .grad { background: linear-gradient(90deg, var(--gold), var(--pink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p { color: var(--muted); font-size: clamp(14px, 1.8vw, 17px); line-height: 1.65; }
+  p + p { margin-top: 10px; }
+  p strong { color: var(--text); }
+  ul { margin-top: 14px; list-style: none; display: grid; gap: 9px; text-align: left; }
+  li { background: rgba(255,255,255,.05); border: 1px solid var(--border); padding: 10px 14px; border-radius: 12px; font-size: 14.5px; line-height: 1.5; }
+  li b { color: var(--gold); }
+  .spell { margin-top: 12px; background: rgba(155,123,255,.1); border: 1px dashed var(--violet);
+    padding: 12px 14px; border-radius: 14px; font-size: 14.5px; line-height: 1.55; text-align: left; }
+  .spell b { color: var(--violet); }
+
+  pre { background: #0d0a1f; border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px 16px; font-size: 13px; line-height: 1.65; overflow: auto; text-align: left; width: 100%; margin-top: 12px;
+    box-shadow: 0 0 18px rgba(155,123,255,.15); }
+  .c-k { color: #c9b3ff; } .c-s { color: #7fe0a8; } .c-f { color: #f2c14e; } .c-c { color: #6f6594; }
+
+  .art { background: rgba(0,0,0,.3); border: 1px solid var(--border); border-radius: 18px; padding: 16px; width: 100%; }
+  .art svg { width: 100%; height: auto; display: block; }
+  .caption { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; line-height: 1.5; }
+  .spark { text-align: center; color: var(--gold); letter-spacing: 8px; font-size: 14px; margin-bottom: 6px; }
+
+  .chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 640px; margin: 18px auto 0; }
+  .chip { font-family: "Courier New", monospace; font-weight: 800; padding: 12px 8px; border-radius: 14px;
+    border: 1px solid var(--border); background: rgba(255,255,255,.05); color: var(--gold); transform: rotate(-.8deg); }
+  .chip:nth-child(even) { transform: rotate(.8deg); color: var(--violet); border-color: rgba(155,123,255,.4); }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 700px; margin: 18px auto 0; }
+  .card { padding: 14px 16px; border-radius: 14px; text-align: left; border: 1px solid var(--border); background: rgba(255,255,255,.05); }
+  .card:nth-child(odd) { transform: rotate(-.7deg); }
+  .card:nth-child(even) { transform: rotate(.7deg); }
+  .card .t { font-weight: 800; font-family: "Courier New", monospace; color: var(--gold); }
+  .card .d { font-size: 13.5px; margin-top: 6px; color: var(--muted); }
+  @media (max-width: 560px) { .chips { grid-template-columns: 1fr 1fr; } .cards { grid-template-columns: 1fr; } }
+
+  footer { z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 12px 28px 20px; gap: 12px; }
+  .btns { display: flex; gap: 10px; }
+  button { cursor: pointer; border: 1px solid var(--border); background: rgba(255,255,255,.07); color: var(--text);
+    padding: 10px 18px; border-radius: 999px; font-size: 15px; font-weight: 700; transition: .2s; }
+  button:hover { border-color: var(--gold); box-shadow: 0 0 12px rgba(242,193,78,.4); transform: translateY(-1px); }
+  button.primary { background: linear-gradient(90deg, #8a6a1f, var(--gold)); color: #241a05; border: none; }
+  #dots { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: transparent; border: 1px solid var(--muted); padding: 0; }
+  .dot.on { background: var(--gold); border-color: var(--gold); width: 28px; border-radius: 999px; box-shadow: 0 0 8px var(--gold); }
+  .hint { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+
+<header>
+  <div class="logo">✦ Театр магии</div>
+  <div id="counter">1 / 8</div>
+</header>
+<div id="progressWrap"><div id="progress"></div></div>
+
+<main>
+<div class="deck">
+
+  <!-- 1 титул -->
+  <section class="slide center active">
+    <div>
+      <div class="spark">✦ ✦ ✦</div>
+      <div class="kicker">магия dunder</div>
+      <h1>Методы с <span class="grad">двойным подчёркиванием</span></h1>
+      <p>Python сам вызывает их в нужный момент: пишешь <strong>print(order)</strong> — срабатывает <strong>__str__</strong>. Шесть заклинаний на примере пиццерии.</p>
+      <div class="chips">
+        <div class="chip">__str__</div><div class="chip">__repr__</div><div class="chip">__eq__</div>
+        <div class="chip">__len__</div><div class="chip">__contains__</div><div class="chip">__add__</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 зачем · магия -->
+  <section class="slide">
+    <div>
+      <div class="kicker">зачем · магия</div>
+      <h2>Почему <span class="grad">«магия»?</span></h2>
+      <p><strong>Магические (специальные) методы</strong> — методы с особыми именами. Python знает их и вызывает сам при привычных операциях. «Магия» — потому что вызова не видно в коде.</p>
+      <pre><span class="c-k">class</span> <span class="c-f">Order</span>:
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, pizza, address):
+        self.pizza = pizza
+        self.address = address
+
+    <span class="c-k">def</span> <span class="c-f">__str__</span>(self):
+        <span class="c-k">return</span> f<span class="c-s">'Заказ: {self.pizza}'</span>
+
+order = <span class="c-f">Order</span>(<span class="c-s">'Маргарита'</span>, <span class="c-s">'Ленина 5'</span>)
+<span class="c-f">print</span>(f<span class="c-s">'Заказ: {order.pizza}'</span>)  <span class="c-c"># форматируем вручную</span>
+<span class="c-f">print</span>(order)  <span class="c-c"># Python вызывает __str__</span></pre>
+      <div class="spell"><b>Польза:</b> результат одинаковый, но формат описан один раз в классе. Кстати, знакомый <b>__init__</b> — тоже специальный метод: Python вызывает его при создании объекта. А вот имя вида <b>__status</b> — не такое: у него нет двух подчёркиваний в конце.</div>
+    </div>
+    <div class="art">
+      <div class="spark">✦ ✦ ✦</div>
+      <svg viewBox="0 0 320 220">
+        <g><rect x="10" y="14" width="300" height="62" rx="12" fill="none" stroke="#b3a8d6" stroke-width="2"/><text x="24" y="40" fill="#b3a8d6" font-size="12" font-weight="bold">вручную, каждый раз</text><text x="24" y="60" fill="#f4eedd" font-size="12">print(f'Заказ: {order.pizza}')</text></g>
+        <g><rect x="10" y="84" width="300" height="62" rx="12" fill="none" stroke="#f2c14e" stroke-width="2"/><text x="24" y="110" fill="#f2c14e" font-size="12" font-weight="bold">один раз в классе</text><text x="24" y="130" fill="#f4eedd" font-size="12">print(order) → __str__</text></g>
+        <text x="160" y="172" fill="#7fe0a8" font-size="12" text-anchor="middle">результат одинаковый:</text>
+        <text x="160" y="192" fill="#f4eedd" font-size="12" text-anchor="middle">Заказ: Маргарита</text>
+      </svg>
+      <div class="caption">Без магии можно — но с ней формат живёт в одном месте.</div>
+    </div>
+  </section>
+
+  <!-- 3 str -->
+  <section class="slide">
+    <div>
+      <div class="kicker">заклинание 1 · __str__</div>
+      <h2><code>print()</code> вызывает <code>__str__</code></h2>
+      <p>Без него печать показывает техническое описание объекта. С ним — <strong>красивый чек</strong>, понятный человеку.</p>
+      <pre><span class="c-k">class</span> <span class="c-f">Order</span>:
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, pizza, address):
+        self.pizza = pizza
+        self.address = address
+        self.status = <span class="c-s">'готовится'</span>
+
+    <span class="c-k">def</span> <span class="c-f">__str__</span>(self):
+        <span class="c-k">return</span> f<span class="c-s">'Заказ: {self.pizza}, {self.address} ({self.status})'</span>
+
+order = <span class="c-f">Order</span>(<span class="c-s">'Маргарита'</span>, <span class="c-s">'Ленина 5'</span>)
+<span class="c-f">print</span>(order)  <span class="c-c"># Заказ: Маргарита, Ленина 5 (готовится)</span></pre>
+    </div>
+    <div class="art">
+      <div class="spark">✦ ✦ ✦</div>
+      <svg viewBox="0 0 320 230">
+        <rect x="85" y="10" width="150" height="48" rx="24" fill="none" stroke="#f2c14e" stroke-width="2"/>
+        <text x="160" y="39" fill="#f2c14e" font-size="14" text-anchor="middle" font-weight="bold">print(order)</text>
+        <line x1="160" y1="58" x2="160" y2="92" stroke="#6f6594" stroke-width="2" stroke-dasharray="4 4"/>
+        <g><rect x="45" y="92" width="230" height="90" rx="14" fill="#0d0a1f" stroke="#7fe0a8" stroke-width="2"/><text x="160" y="120" fill="#7fe0a8" font-size="12" text-anchor="middle">__str__ колдует:</text><text x="160" y="142" fill="#f4eedd" font-size="12" text-anchor="middle">Заказ: Маргарита,</text><text x="160" y="160" fill="#f4eedd" font-size="12" text-anchor="middle">Ленина 5 (готовится)</text></g>
+      </svg>
+      <div class="caption">Обычный вызов print — а внутри сработал твой __str__. Вывод расширили: дальше будут адрес и статус.</div>
+    </div>
+  </section>
+
+  <!-- 4 repr -->
+  <section class="slide">
+    <div>
+      <div class="kicker violet">заклинание 2 · __repr__</div>
+      <h2><code>repr()</code> — для разработчика</h2>
+      <p><code>__str__</code> — красиво человеку. <code>__repr__</code> — <strong>точно разработчику</strong>: видно, что внутри объекта. Его часто пишут так, чтобы объект можно было пересоздать. Кстати: нет <code>__str__</code> — print использует <code>__repr__</code>.</p>
+      <pre><span class="c-k">class</span> <span class="c-f">Order</span>:
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, pizza, address):
+        self.pizza = pizza
+        self.address = address
+
+    <span class="c-k">def</span> <span class="c-f">__repr__</span>(self):
+        <span class="c-k">return</span> f<span class="c-s">'Order({self.pizza!r}, {self.address!r})'</span>
+
+order = <span class="c-f">Order</span>(<span class="c-s">'Маргарита'</span>, <span class="c-s">'Ленина 5'</span>)
+<span class="c-f">print</span>(<span class="c-f">repr</span>(order))  <span class="c-c"># Order('Маргарита', 'Ленина 5')</span></pre>
+    </div>
+    <div class="art">
+      <div class="spark">✦ ✦ ✦</div>
+      <svg viewBox="0 0 320 220">
+        <rect x="85" y="10" width="150" height="46" rx="23" fill="none" stroke="#f2c14e" stroke-width="2"/>
+        <text x="160" y="38" fill="#f2c14e" font-size="13" text-anchor="middle" font-weight="bold">repr(order)</text>
+        <line x1="160" y1="56" x2="160" y2="90" stroke="#6f6594" stroke-width="2" stroke-dasharray="4 4"/>
+        <g><rect x="25" y="90" width="270" height="62" rx="12" fill="#0d0a1f" stroke="#7fe0a8" stroke-width="2"/><text x="160" y="115" fill="#7fe0a8" font-size="11" text-anchor="middle">Order('Маргарита', 'Ленина 5')</text><text x="160" y="135" fill="#6f6594" font-size="10" text-anchor="middle">!r показывает строки с кавычками</text></g>
+        <text x="160" y="178" fill="#b3a8d6" font-size="12" text-anchor="middle">тот же вызов, что в коде слева</text>
+      </svg>
+      <div class="caption">Витрина — для людей, кухня — для своих. Оба нужны.</div>
+    </div>
+  </section>
+
+  <!-- 5 eq -->
+  <section class="slide">
+    <div>
+      <div class="kicker">заклинание 3 · __eq__</div>
+      <h2><code>==</code> сравнивает <span class="grad">по-твоему</span></h2>
+      <p>Без <code>__eq__</code> два разных объекта нашего <code>Order</code> по умолчанию не равны — даже с одинаковой начинкой. С <code>__eq__</code> сравниваем <strong>по содержимому</strong>: пицца и адрес совпали — заказы равны. Неравенство <code>!=</code> прилагается само. Совпадение пиццы и адреса — правило нашего примера, не закон жизни.</p>
+      <pre><span class="c-k">class</span> <span class="c-f">Order</span>:
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, pizza, address):
+        self.pizza = pizza
+        self.address = address
+
+    <span class="c-k">def</span> <span class="c-f">__eq__</span>(self, other):
+        <span class="c-k">if not</span> <span class="c-f">isinstance</span>(other, <span class="c-f">Order</span>):
+            <span class="c-k">return</span> NotImplemented
+        <span class="c-k">return</span> (self.pizza, self.address) == (other.pizza, other.address)
+
+order1 = <span class="c-f">Order</span>(<span class="c-s">'Маргарита'</span>, <span class="c-s">'Ленина 5'</span>)
+order2 = <span class="c-f">Order</span>(<span class="c-s">'Маргарита'</span>, <span class="c-s">'Ленина 5'</span>)
+order3 = <span class="c-f">Order</span>(<span class="c-s">'Пепперони'</span>, <span class="c-s">'Ленина 5'</span>)
+<span class="c-f">print</span>(order1 == order2)  <span class="c-c"># True</span>
+<span class="c-f">print</span>(order1 == order3)  <span class="c-c"># False</span></pre>
+      <div class="spell"><b>Разбор:</b> <b>isinstance</b> проверяет, заказ ли перед нами. <b>NotImplemented</b> значит «не знаю, пусть решает Python» — тогда сравнение с числом спокойно даёт False.</div>
+    </div>
+    <div class="art">
+      <div class="spark">✦ ✦ ✦</div>
+      <svg viewBox="0 0 320 210">
+        <g><rect x="5" y="20" width="140" height="90" rx="12" fill="none" stroke="#f2c14e" stroke-width="2"/><text x="75" y="50" fill="#f4eedd" font-size="12" text-anchor="middle">order1</text><text x="75" y="70" fill="#b3a8d6" font-size="11" text-anchor="middle">Маргарита</text><text x="75" y="88" fill="#b3a8d6" font-size="11" text-anchor="middle">Ленина 5</text></g>
+        <text x="160" y="72" fill="#f2c14e" font-size="20" text-anchor="middle" font-weight="bold">==</text>
+        <g><rect x="175" y="20" width="140" height="90" rx="12" fill="none" stroke="#f2c14e" stroke-width="2"/><text x="245" y="50" fill="#f4eedd" font-size="12" text-anchor="middle">order2</text><text x="245" y="70" fill="#b3a8d6" font-size="11" text-anchor="middle">Маргарита</text><text x="245" y="88" fill="#b3a8d6" font-size="11" text-anchor="middle">Ленина 5</text></g>
+        <text x="160" y="142" fill="#7fe0a8" font-size="13" text-anchor="middle" font-weight="bold">True — содержимое совпало!</text>
+        <text x="160" y="164" fill="#6f6594" font-size="11" text-anchor="middle">без __eq__ было бы False: объекты-то разные</text>
+      </svg>
+      <div class="caption">Одинаковые карточки — разные объекты. Сравниваем начинку, а не обложку.</div>
+    </div>
+  </section>
+
+  <!-- 6 len + contains -->
+  <section class="slide">
+    <div>
+      <div class="kicker violet">заклинания 4–5 · __len__ __contains__</div>
+      <h2>Меню знает <span class="grad">свой размер</span></h2>
+      <p>Новый герой — <strong>Menu</strong>, список блюд. <code>len(menu)</code> считает позиции, а <code>in</code> проверяет наличие — оба через твои методы.</p>
+      <pre><span class="c-k">class</span> <span class="c-f">Menu</span>:
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, dishes):
+        self.dishes = dishes
+
+    <span class="c-k">def</span> <span class="c-f">__len__</span>(self):
+        <span class="c-k">return</span> <span class="c-f">len</span>(self.dishes)
+
+    <span class="c-k">def</span> <span class="c-f">__contains__</span>(self, dish):
+        <span class="c-k">return</span> dish <span class="c-k">in</span> self.dishes
+
+menu = <span class="c-f">Menu</span>([<span class="c-s">'Маргарита'</span>, <span class="c-s">'Пепперони'</span>])
+<span class="c-f">print</span>(<span class="c-f">len</span>(menu))  <span class="c-c"># 2</span>
+<span class="c-f">print</span>(<span class="c-s">'Маргарита'</span> <span class="c-k">in</span> menu)  <span class="c-c"># True</span></pre>
+    </div>
+    <div class="art">
+      <div class="spark">✦ ✦ ✦</div>
+      <svg viewBox="0 0 320 220">
+        <rect x="70" y="10" width="180" height="140" rx="14" fill="none" stroke="#9b7bff" stroke-width="2"/>
+        <text x="160" y="36" fill="#f4eedd" font-size="13" text-anchor="middle" font-weight="bold">menu</text>
+        <text x="160" y="60" fill="#b3a8d6" font-size="12" text-anchor="middle">· Маргарита</text>
+        <text x="160" y="80" fill="#b3a8d6" font-size="12" text-anchor="middle">· Пепперони</text>
+        <text x="160" y="106" fill="#9b7bff" font-size="12" text-anchor="middle">len() → 2</text>
+        <text x="160" y="126" fill="#9b7bff" font-size="12" text-anchor="middle">'Маргарита' in → True</text>
+        <text x="160" y="176" fill="#6f6594" font-size="11" text-anchor="middle">меню ведёт себя как коллекция</text>
+      </svg>
+      <div class="caption">Два заклинания — и меню поддерживает len() и in, как список.</div>
+    </div>
+  </section>
+
+  <!-- 7 add -->
+  <section class="slide">
+    <div>
+      <div class="kicker">заклинание 6 · __add__</div>
+      <h2><code>+</code> склеивает <span class="grad">меню</span></h2>
+      <p>Плюс складывает два меню в одно: блюда объединяются. Тот же класс <strong>Menu</strong> плюс новый метод — остальное без изменений.</p>
+      <pre><span class="c-c"># тот же класс Menu плюс новый метод __add__</span>
+<span class="c-k">class</span> <span class="c-f">Menu</span>:
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, dishes):
+        self.dishes = dishes
+
+    <span class="c-k">def</span> <span class="c-f">__len__</span>(self):
+        <span class="c-k">return</span> <span class="c-f">len</span>(self.dishes)
+
+    <span class="c-k">def</span> <span class="c-f">__contains__</span>(self, dish):
+        <span class="c-k">return</span> dish <span class="c-k">in</span> self.dishes
+
+    <span class="c-k">def</span> <span class="c-f">__add__</span>(self, other):
+        <span class="c-k">return</span> <span class="c-f">Menu</span>(self.dishes + other.dishes)
+
+morning = <span class="c-f">Menu</span>([<span class="c-s">'Маргарита'</span>])
+evening = <span class="c-f">Menu</span>([<span class="c-s">'Пепперони'</span>])
+day = morning + evening
+<span class="c-f">print</span>(day.dishes)  <span class="c-c"># ['Маргарита', 'Пепперони']</span>
+<span class="c-f">print</span>(<span class="c-f">len</span>(day))  <span class="c-c"># 2 — старые методы на месте</span></pre>
+    </div>
+    <div class="art">
+      <div class="spark">✦ ✦ ✦</div>
+      <svg viewBox="0 0 320 220">
+        <g><rect x="5" y="30" width="125" height="80" rx="12" fill="none" stroke="#f2c14e" stroke-width="2"/><text x="67" y="58" fill="#f4eedd" font-size="11" text-anchor="middle">morning</text><text x="67" y="78" fill="#b3a8d6" font-size="11" text-anchor="middle">Маргарита</text></g>
+        <text x="160" y="78" fill="#f2c14e" font-size="22" text-anchor="middle" font-weight="bold">+</text>
+        <g><rect x="190" y="30" width="125" height="80" rx="12" fill="none" stroke="#f2c14e" stroke-width="2"/><text x="252" y="58" fill="#f4eedd" font-size="11" text-anchor="middle">evening</text><text x="252" y="78" fill="#b3a8d6" font-size="11" text-anchor="middle">Пепперони</text></g>
+        <g><rect x="60" y="126" width="200" height="56" rx="12" fill="none" stroke="#7fe0a8" stroke-width="2"/><text x="160" y="148" fill="#7fe0a8" font-size="11" text-anchor="middle">day: 2 блюда</text><text x="160" y="166" fill="#6f6594" font-size="10" text-anchor="middle">__add__ склеил два меню</text></g>
+      </svg>
+      <div class="caption">Обычный плюс — а внутри твой метод решает, что значит «сложить».</div>
+    </div>
+  </section>
+
+  <!-- 8 шпаргалка -->
+  <section class="slide">
+    <div>
+      <div class="kicker violet">шпаргалка · пишешь → вызывается</div>
+      <h2>Шесть заклинаний <span class="grad">одной таблицей</span></h2>
+      <p>Слева — привычная запись. Справа — метод, который Python вызовет сам.</p>
+      <ul>
+        <li><b>print(order)</b> → __str__ — красивый чек</li>
+        <li><b>repr(order)</b> → __repr__ — точное описание</li>
+        <li><b>order1 == order2</b> → __eq__ — сравнение по содержимому</li>
+        <li><b>len(menu)</b> → __len__ — размер коллекции</li>
+        <li><b>'Маргарита' in menu</b> → __contains__ — проверка наличия</li>
+        <li><b>morning + evening</b> → __add__ — сложение по-твоему</li>
+      </ul>
+    </div>
+    <div class="art">
+      <div class="spark">✦ ✦ ✦</div>
+      <svg viewBox="0 0 320 240">
+        <g><rect x="10" y="10" width="140" height="52" rx="12" fill="none" stroke="#f2c14e" stroke-width="2"/><text x="80" y="32" fill="#f2c14e" font-size="12" text-anchor="middle">print()</text><text x="80" y="50" fill="#6f6594" font-size="11" text-anchor="middle">↓ __str__</text></g>
+        <g><rect x="170" y="10" width="140" height="52" rx="12" fill="none" stroke="#f2c14e" stroke-width="2"/><text x="240" y="32" fill="#f2c14e" font-size="12" text-anchor="middle">repr()</text><text x="240" y="50" fill="#6f6594" font-size="11" text-anchor="middle">↓ __repr__</text></g>
+        <g><rect x="10" y="70" width="140" height="52" rx="12" fill="none" stroke="#9b7bff" stroke-width="2"/><text x="80" y="92" fill="#9b7bff" font-size="12" text-anchor="middle">==</text><text x="80" y="110" fill="#6f6594" font-size="11" text-anchor="middle">↓ __eq__</text></g>
+        <g><rect x="170" y="70" width="140" height="52" rx="12" fill="none" stroke="#9b7bff" stroke-width="2"/><text x="240" y="92" fill="#9b7bff" font-size="12" text-anchor="middle">len() · in</text><text x="240" y="110" fill="#6f6594" font-size="11" text-anchor="middle">↓ __len__ · __contains__</text></g>
+        <g><rect x="85" y="130" width="150" height="52" rx="12" fill="none" stroke="#ff6ec7" stroke-width="2"/><text x="160" y="152" fill="#ff6ec7" font-size="12" text-anchor="middle">+</text><text x="160" y="170" fill="#6f6594" font-size="11" text-anchor="middle">↓ __add__</text></g>
+        <text x="160" y="208" fill="#b3a8d6" font-size="12" text-anchor="middle">работают только известные Python имена</text>
+      </svg>
+      <div class="caption">Никакой магии: назвал метод правильно — Python нашёл его сам.</div>
+    </div>
+  </section>
+
+  <!-- 9 итог -->
+  <section class="slide center">
+    <div>
+      <div class="spark">✦ ✦ ✦</div>
+      <div class="kicker">запомнить за 10 секунд</div>
+      <h2>dunder = <span class="grad">договорённость имён</span></h2>
+      <p>Не учишь магию — учишь, какое имя за что отвечает. Остальных специальных методов десятки — это шесть полезных примеров.</p>
+      <div class="cards">
+        <div class="card"><div class="t">__str__ · __repr__</div><div class="d">Красиво человеку, точно разработчику.</div></div>
+        <div class="card"><div class="t">__eq__</div><div class="d">Сравнение по содержимому; != — обратное (в нашем примере).</div></div>
+        <div class="card"><div class="t">__len__ · __contains__</div><div class="d">Своя коллекция отвечает на len() и in.</div></div>
+        <div class="card"><div class="t">__add__</div><div class="d">Плюс значит то, что решишь ты.</div></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="btns">
+    <button id="prev">← Назад</button>
+    <button id="next" class="primary">Далее →</button>
+  </div>
+  <div id="dots"></div>
+  <div class="hint">стрелки ← → / пробел</div>
+</footer>
+
+<script>
+let i = 0;
+const slides = [...document.querySelectorAll('.slide')];
+const dotsBox = document.getElementById('dots');
+const counter = document.getElementById('counter');
+const progress = document.getElementById('progress');
+slides.forEach((_, n) => {
+  const d = document.createElement('button');
+  d.className = 'dot' + (n === 0 ? ' on' : '');
+  d.setAttribute('aria-label', 'слайд ' + (n + 1));
+  d.onclick = () => go(n);
+  dotsBox.appendChild(d);
+});
+const dots = [...dotsBox.children];
+function go(n) {
+  i = (n + slides.length) % slides.length;
+  slides.forEach((s, k) => s.classList.toggle('active', k === i));
+  dots.forEach((d, k) => d.classList.toggle('on', k === i));
+  counter.textContent = (i + 1) + ' / ' + slides.length;
+  progress.style.width = ((i + 1) / slides.length * 100) + '%';
+}
+document.getElementById('next').onclick = () => go(i + 1);
+document.getElementById('prev').onclick = () => go(i - 1);
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(i + 1); }
+  if (e.key === 'ArrowLeft') go(i - 1);
+});
+let x0 = null;
+window.addEventListener('touchstart', e => x0 = e.touches[0].clientX, {passive:true});
+window.addEventListener('touchend', e => {
+  if (x0 === null) return;
+  const dx = e.changedTouches[0].clientX - x0;
+  if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
+  x0 = null;
+}, {passive:true});
+go(0);
+</script>
+</body>
+</html>
