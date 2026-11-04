@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Декораторы в Python — матрёшка</title>
+<script>try { if (localStorage.getItem('decks.noArt') === '1') document.documentElement.classList.add('no-art'); } catch (e) {}</script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -186,6 +187,12 @@
   }
   pre { background: #f8f3e7; border-color: var(--red); box-shadow: 4px 4px 0 rgba(107,42,37,.15); }
   @media (max-width: 860px) { .slide { overflow-y: auto; } }
+  /* переключатель схем */
+  button.toggle { font-size: 12px; padding: 6px 12px; opacity: .85; }
+  button.toggle[aria-pressed="false"] { opacity: .55; }
+  html.no-art .art { display: none; }
+  html.no-art .slide.active:not(.center) { grid-template-columns: 1fr; }
+  html.no-art .slide.active:not(.center) > div:not(.art):not(.sheetno) { width: 100%; max-width: 1200px; justify-self: center; }
 </style>
 </head>
 <body>
@@ -793,6 +800,7 @@ deliver(<span class="c-s">'Пепперони'</span>)</pre>
   <div class="btns">
     <button id="prev">← Назад</button>
     <button id="next" class="primary">Далее →</button>
+    <button id="schemasBtn" class="toggle" aria-pressed="true" title="Показать или скрыть схемы (S)">схемы: вкл</button>
   </div>
   <div id="dots"></div>
   <div class="hint">стрелки ← → / пробел</div>
@@ -804,6 +812,20 @@ const slides = [...document.querySelectorAll('.slide')];
 const dotsBox = document.getElementById('dots');
 const counter = document.getElementById('counter');
 const progress = document.getElementById('progress');
+const schemasBtn = document.getElementById('schemasBtn');
+let noArt = document.documentElement.classList.contains('no-art');
+function applyNoArt() {
+  document.documentElement.classList.toggle('no-art', noArt);
+  schemasBtn.setAttribute('aria-pressed', String(!noArt));
+  schemasBtn.textContent = noArt ? 'схемы: выкл' : 'схемы: вкл';
+}
+function toggleNoArt() {
+  noArt = !noArt;
+  try { localStorage.setItem('decks.noArt', noArt ? '1' : '0'); } catch (e) {}
+  applyNoArt();
+}
+schemasBtn.addEventListener('click', toggleNoArt);
+applyNoArt();
 slides.forEach((_, n) => {
   const d = document.createElement('button');
   d.className = 'dot' + (n === 0 ? ' on' : '');
@@ -830,6 +852,7 @@ document.getElementById('prev').onclick = () => go(i - 1);
 window.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(i + 1); }
   if (e.key === 'ArrowLeft') go(i - 1);
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 's' || e.key === 'S' || e.key === 'ы' || e.key === 'Ы')) toggleNoArt();
 });
 let x0 = null;
 window.addEventListener('touchstart', e => x0 = e.touches[0].clientX, {passive:true});
