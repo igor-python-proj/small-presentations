@@ -122,7 +122,7 @@
   /* TV: крупный код, без внутреннего скролла */
   .deck { width: min(1640px, 96vw); }
   .slide { max-height: calc(100vh - 150px); overflow: hidden; padding: 18px 24px; }
-  @media (min-width: 821px) { .slide.active { grid-template-columns: 1.25fr .75fr; } }
+  @media (min-width: 821px) { .slide.active:not(.center) { grid-template-columns: 1.25fr .75fr; } }
   h1 { font-size: clamp(28px, 3.2vw, 54px); }
   h2 { font-size: clamp(24px, 2.2vw, 34px); }
   pre { font-size: 16px; line-height: 1.4; padding: 8px 14px; margin-top: 4px; }
