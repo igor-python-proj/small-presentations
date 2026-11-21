@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Базы данных — список дел</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1216;
+    --panel: #151a21;
+    --panel2: #1a212b;
+    --panel3: #10151b;
+    --line: #2a323d;
+    --line2: #3a4350;
+    --ink: #e9ebef;
+    --muted: #97a2b1;
+    --dim: #6b7686;
+    --accent: #e9b44c;
+    --accent2: #f2cd7d;
+    --accent-dim: rgba(233, 180, 76, .12);
+    --accent-ink: #211807;
+    --ok: #63b978;
+    --ok-dim: rgba(99, 185, 120, .12);
+    --bad: #e07676;
+    --bad-dim: rgba(224, 118, 118, .12);
+    --mono: "Cascadia Mono", ui-monospace, Consolas, "Courier New", monospace;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background-color: var(--bg);
+    background-image: radial-gradient(ellipse 90% 55% at 50% -12%, var(--accent-dim), transparent 70%);
+    min-height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+
+  header { z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 30px 8px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+  .logo .sheet { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--accent); border: 1px solid var(--line2); background: var(--panel); padding: 3px 10px; border-radius: 999px; }
+  #counter { font-family: var(--mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; border: 1px solid var(--line); background: var(--panel); padding: 4px 12px; border-radius: 999px; }
+  #progressWrap { height: 6px; background: var(--panel3); border-bottom: 1px solid var(--line); }
+  #progress { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .35s; }
+
+  main { flex: 1; z-index: 1; display: grid; place-items: center; padding: 10px 22px 6px; min-height: 0; }
+  .deck { width: min(1600px, 96vw); }
+  .slide {
+    position: relative; display: none;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+    padding: 20px 26px; min-height: 60vh; max-height: calc(100vh - 150px); overflow: hidden;
+    box-shadow: 0 18px 50px -30px rgba(0, 0, 0, .8);
+  }
+  .slide.active { display: grid; grid-template-columns: .94fr 1.06fr; gap: 24px; align-items: center; animation: in .35s ease; }
+  .slide.center { grid-template-columns: 1fr; text-align: center; justify-items: center; }
+  @keyframes in { from { opacity: 0; transform: translateY(10px); } }
+  @media (max-width: 860px) { .slide.active { grid-template-columns: 1fr; } body { overflow: auto; } .slide { overflow-y: auto; max-height: none; } }
+
+  .kicker { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--line2);
+    background: var(--accent-dim); padding: 5px 12px; border-radius: 999px; margin-bottom: 12px; }
+  .kicker::before { content: "▸"; }
+  .kicker.ok { color: var(--ok); background: var(--ok-dim); }
+  .kicker.bad { color: var(--bad); background: var(--bad-dim); }
+
+  h1 { font-size: clamp(28px, 3.4vw, 50px); line-height: 1.08; margin-bottom: 10px; font-weight: 800; letter-spacing: -.01em; }
+  h2 { font-size: clamp(20px, 2.3vw, 29px); line-height: 1.16; margin-bottom: 8px; font-weight: 800; letter-spacing: -.01em; }
+  h1 .mark, h2 .mark { color: var(--accent); }
+  h1 .mark-ok, h2 .mark-ok { color: var(--ok); }
+  h1 .mark-bad, h2 .mark-bad { color: var(--bad); }
+
+  p { color: var(--muted); font-size: clamp(13.5px, 1.4vw, 16px); line-height: 1.55; }
+  p + p { margin-top: 8px; }
+  p strong, li strong { color: var(--ink); font-weight: 650; }
+  code { font-family: var(--mono); font-size: .9em; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--accent2); white-space: nowrap; }
+
+  ul { margin-top: 10px; list-style: none; display: grid; gap: 7px; text-align: left; }
+  li { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 8px 12px; border-radius: 10px;
+    font-size: clamp(12.5px, 1.25vw, 14.5px); line-height: 1.5; color: var(--muted); }
+  li b { color: var(--ink); font-weight: 650; }
+  li.ok { border-left-color: var(--ok); } li.ok b { color: var(--ok); }
+  li.bad { border-left-color: var(--bad); } li.bad b { color: var(--bad); }
+
+  .note { margin-top: 10px; background: var(--accent-dim); border: 1px dashed var(--line2); border-radius: 12px;
+    padding: 10px 13px; font-size: clamp(12.5px, 1.25vw, 14.5px); line-height: 1.55; color: var(--muted); text-align: left; }
+  .note b { color: var(--accent2); }
+  .note.ok { background: var(--ok-dim); } .note.ok b { color: var(--ok); }
+  .note.bad { background: var(--bad-dim); } .note.bad b { color: var(--bad); }
+
+  pre { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px;
+    font-family: var(--mono); font-size: clamp(12.5px, 1.25vw, 15px); line-height: 1.55; overflow: auto;
+    text-align: left; width: 100%; margin-top: 10px; color: var(--ink); }
+  .k { color: var(--accent); font-weight: 700; }
+  .k2 { color: var(--accent2); font-weight: 700; }
+  .p { color: #b3a3e0; font-weight: 700; }
+  .f { color: #82b8e8; }
+  .s { color: var(--ok); }
+  .n { color: #f0a06e; }
+  .c { color: var(--dim); font-style: italic; }
+  .badline { color: var(--bad); border-color: rgba(224, 118, 118, .45); background: var(--bad-dim); }
+
+  .term { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 10px; }
+  .term-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+  .tdot { width: 10px; height: 10px; border-radius: 50%; opacity: .8; }
+  .tdot.r { background: #e07676; } .tdot.y { background: #e9b44c; } .tdot.g { background: #63b978; }
+  .term-title { margin-left: 8px; font-family: var(--mono); font-size: 12px; color: var(--dim); }
+  .term-body { padding: 10px 14px; font-family: var(--mono); font-size: clamp(12.5px, 1.2vw, 14.5px); line-height: 1.6; color: var(--ink); height: 218px; overflow-y: auto; }
+  .t-comment { color: var(--dim); }
+  .t-ok { color: var(--ok); } .t-bad { color: var(--bad); } .t-add { color: var(--accent2); }
+  .t-mark { background: var(--accent-dim); border-radius: 4px; }
+
+  .dlabel { font-family: var(--mono); font-size: 11px; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; }
+  .dwrap { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; margin-top: 6px; }
+  .min-h { min-height: 200px; }
+
+  .dtab { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: clamp(12.5px, 1.2vw, 14.5px); }
+  .dtab th { text-align: left; color: var(--accent); font-size: .85em; letter-spacing: .06em; padding: 8px 10px;
+    border-bottom: 1px solid var(--line2); font-weight: 700; }
+  .dtab th.click { cursor: pointer; }
+  .dtab td { padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--ink); }
+  .dtab tr:last-child td { border-bottom: none; }
+  .dtab tr.off td { color: var(--dim); }
+  .dtab tr.ghost td { color: var(--dim); font-style: italic; }
+  .dtab td.bad-cell { color: var(--bad); font-weight: 700; }
+  .dtab tr.hl td { background: var(--accent-dim); }
+  .dtab td.hlc { color: var(--accent2); background: var(--accent-dim); }
+  .dempty { padding: 14px; color: var(--dim); font-family: var(--mono); font-size: 13px; text-align: center; }
+  .dimcell { color: var(--dim); font-style: italic; }
+
+  .todopanel { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; }
+  .addrow { display: flex; gap: 8px; }
+  .addrow input { flex: 1; min-width: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--ink); padding: 9px 12px; font-size: 14px; outline: none; }
+  .addrow input:focus { border-color: var(--accent); }
+  .todolist { margin-top: 10px; display: grid; gap: 6px; min-height: 172px; }
+  .todo { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 13px;
+    font-size: clamp(13px, 1.3vw, 15px); animation: in .3s ease; }
+  .demonote { margin-top: 10px; font-size: clamp(12.5px, 1.2vw, 14px); line-height: 1.55; color: var(--muted); min-height: 40px; }
+  .demonote b { color: var(--bad); }
+  .demonote b.ok { color: var(--ok); }
+  .demonote.ok b { color: var(--ok); }
+
+  button { cursor: pointer; font-family: inherit; border: 1px solid var(--line2); background: var(--panel2); color: var(--ink);
+    padding: 9px 16px; border-radius: 10px; font-size: clamp(12.5px, 1.25vw, 14.5px); font-weight: 600; transition: .15s; }
+  button:hover { border-color: var(--accent); color: var(--accent2); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.primary:hover { background: var(--accent2); color: var(--accent-ink); }
+  button.ok { border-color: rgba(99, 185, 120, .5); color: var(--ok); }
+  button.bad { border-color: rgba(224, 118, 118, .5); color: var(--bad); }
+  button.small { padding: 6px 11px; font-size: 12.5px; border-radius: 8px; }
+  button.mini { padding: 2px 8px; font-size: 12px; border-radius: 7px; margin-right: 4px; }
+  button:disabled { opacity: .4; cursor: default; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+  .chips .chip { font-family: var(--mono); font-size: 13px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line2); background: var(--panel2); color: var(--muted); }
+
+  .console { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; margin-top: 8px; overflow: hidden; }
+  .console-row { display: flex; gap: 8px; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+  .console-row .prompt { font-family: var(--mono); color: var(--accent); font-size: 14px; }
+  .console-row input { flex: 1; background: var(--panel3); border: 1px solid var(--line); border-radius: 8px; color: var(--ink);
+    font-family: var(--mono); font-size: 14px; padding: 7px 10px; outline: none; min-width: 0; }
+  .console-row input:focus { border-color: var(--accent); }
+  .console-chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .cchip { font-family: var(--mono); font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line2); background: var(--panel); color: var(--muted); cursor: pointer; }
+  .cchip:hover { border-color: var(--accent); color: var(--accent2); }
+  .console-result { padding: 4px 10px 10px; max-height: 216px; overflow-y: auto; }
+  .res-ok { color: var(--ok); font-family: var(--mono); font-size: 13px; padding: 6px 2px; }
+  .res-err { color: var(--bad); font-family: var(--mono); font-size: 13px; padding: 6px 2px; }
+  .res-empty { color: var(--dim); font-family: var(--mono); font-size: 13px; padding: 6px 2px; }
+
+  .sqllog { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; margin-top: 6px; padding: 8px 12px;
+    height: 116px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+  .sqllog .lbl { color: var(--dim); }
+  .sqllog .cur { color: var(--accent2); }
+
+  .slots { display: grid; gap: 10px; margin-top: 6px; }
+  .slot { display: flex; align-items: baseline; gap: 12px; background: var(--panel3); border: 1px dashed var(--line2); border-radius: 12px;
+    padding: 11px 14px; opacity: .3; transition: .45s; }
+  .slot.fill { opacity: 1; border-style: solid; background: var(--panel2); }
+  .slot .plus { font-family: var(--mono); color: var(--dim); font-size: 15px; min-width: 14px; }
+  .slot .t { font-weight: 700; color: var(--accent2); font-size: clamp(14px, 1.5vw, 17px); white-space: nowrap; }
+  .slot .d { color: var(--muted); font-size: clamp(12px, 1.2vw, 13.5px); margin-left: auto; text-align: right; }
+  .formula { margin-top: 14px; font-family: var(--mono); font-size: clamp(13.5px, 1.5vw, 17px); color: var(--ink); text-align: center; opacity: 0; transition: .5s; }
+  .formula.show { opacity: 1; }
+  .formula b { color: var(--accent); }
+
+  .ftree { font-family: var(--mono); font-size: clamp(13px, 1.35vw, 15.5px); line-height: 2; background: var(--panel3);
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-top: 8px; }
+  .ftree .db { color: var(--accent2); font-weight: 700; }
+  .ftree .cm { color: var(--dim); }
+  .reveal { display: none; margin-top: 12px; }
+  .reveal.open { display: block; animation: in .35s ease; }
+
+  .tworow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tworow pre { margin-top: 10px; }
+  .hintline { margin-top: 8px; font-family: var(--mono); font-size: 12.5px; color: var(--dim); text-align: center; }
+  .cline { padding: 1px 5px; border-radius: 6px; }
+  .cline.colclick { cursor: pointer; }
+  .cline.colclick:hover, .cline.on { background: var(--accent-dim); }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 880px; margin: 14px auto 0; text-align: left; }
+  .card { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line2); background: var(--panel2); }
+  .card .t { font-family: var(--mono); font-weight: 700; font-size: 13.5px; color: var(--accent); }
+  .card .d { font-size: 13.5px; margin-top: 6px; color: var(--muted); line-height: 1.55; }
+  .card .d b { color: var(--ink); }
+  .nextline { margin-top: 16px; color: var(--dim); font-size: 14.5px; }
+  .nextline b { color: var(--accent2); }
+  .sheetno { position: absolute; top: 14px; right: 18px; font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: .12em; }
+
+  footer { z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 10px 30px 14px; gap: 12px; }
+  .btns { display: flex; gap: 9px; }
+  #dots { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--line2); padding: 0; }
+  .dot.on { background: var(--accent); border-color: var(--accent); width: 26px; border-radius: 999px; }
+  .hint { color: var(--dim); font-size: 12.5px; font-family: var(--mono); }
+  @media (min-width: 861px) { .slide.active:not(.center) { grid-template-columns: .94fr 1.06fr; } }
+  @media (min-width: 1600px) { pre { font-size: 16.5px; } .note { font-size: 15px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="sheet">БД · 01</span><span>Список дел</span></div>
+  <div id="counter">1 / 15</div>
+</header>
+<div id="progressWrap"><div id="progress"></div></div>
+
+<main>
+<div class="deck">
+
+  <!-- 1 · титул -->
+  <section class="slide center active">
+    <div class="sheetno">БД · 01 / 15</div>
+    <div>
+      <div class="kicker">Python · SQLite</div>
+      <h1>База данных — <span class="mark">список дел</span></h1>
+      <p style="max-width:760px">Знакомый список дел: добавил — сделал — вычеркнул. Сделаем его сами и увидим, где он ломается: <strong>память</strong>, <strong>текстовый файл</strong>, <strong>аккуратная таблица</strong>. А потом — что такое база данных и зачем она вообще.</p>
+      <div class="chips">
+        <span class="chip">1 · память</span>
+        <span class="chip">2 · файл</span>
+        <span class="chip">3 · таблица</span>
+        <span class="chip">SQLite</span>
+        <span class="chip">SQL</span>
+        <span class="chip">commit и ?</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · попытка 1: память -->
+  <section class="slide">
+    <div class="sheetno">БД · 02 / 15</div>
+    <div>
+      <div class="kicker">Попытка 1 · память</div>
+      <h2>Список в переменной живёт, <span class="mark-bad">пока живёт программа</span></h2>
+      <p>Обычный список дел — это список Python. Он в памяти: добавить дело можно, отметить можно, работает быстро.</p>
+      <ul>
+        <li>Добавьте пару дел справа — список растёт.</li>
+        <li>Нажмите <b>«закрыть программу»</b> — память освобождается.</li>
+        <li>Программа снова работает. А списка дел <b>нет</b>.</li>
+      </ul>
+      <div class="note bad"><b>Проблема:</b> данные прожили ровно столько, сколько работала программа. А список дел должен переживать перезапуск.</div>
+    </div>
+    <div>
+      <div class="dlabel">жизнь программы</div>
+      <div class="todopanel">
+        <div class="addrow">
+          <input id="t2input" placeholder="новое дело…">
+          <button id="t2add" class="primary">＋ добавить</button>
+        </div>
+        <div id="t2list" class="todolist"></div>
+        <div class="btnrow">
+          <button id="t2close" class="bad">✕ закрыть программу</button>
+          <button id="t2reset" class="small">↺ заново</button>
+        </div>
+        <div id="t2note" class="demonote"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · попытка 2: файл -->
+  <section class="slide">
+    <div class="sheetno">БД · 03 / 15</div>
+    <div>
+      <div class="kicker">Попытка 2 · текстовый файл</div>
+      <h2>Файл не исчезает. <span class="mark">Но это дневник</span></h2>
+      <p>Записываем всё в <code>журнал.txt</code>: файл живёт на диске и переживает любой перезапуск. Пощёлкаем кнопками и посмотрим, что накопится.</p>
+      <ul>
+        <li>Каждое действие — <b>новая строка</b>: события вперемешку с итогами.</li>
+        <li><b>«Собрать катку»</b> встречается дважды — какую запись читать?</li>
+        <li>Ответ на вопрос <b>«что осталось?»</b> в файле не записан. Его каждый раз выкапывают заново, перечитывая всё.</li>
+      </ul>
+      <div class="note"><b>Вывод:</b> файл хранит <b>историю</b>. А в списке дел нужно состояние «сейчас».</div>
+    </div>
+    <div>
+      <div class="dlabel">журнал.txt</div>
+      <div class="term">
+        <div class="term-bar"><span class="tdot r"></span><span class="tdot y"></span><span class="tdot g"></span><span class="term-title" id="t3title">журнал.txt</span></div>
+        <div class="term-body" id="t3body"></div>
+      </div>
+      <div class="btnrow">
+        <button id="t3add" class="small">＋ новое дело</button>
+        <button id="t3done" class="small ok">✓ дело сделано</button>
+        <button id="t3cancel" class="small bad">✕ отменилось</button>
+        <button id="t3restart" class="small">↻ перезапуск программы</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · попытка 3: таблица -->
+  <section class="slide">
+    <div class="sheetno">БД · 04 / 15</div>
+    <div>
+      <div class="kicker">Попытка 3 · таблица</div>
+      <h2>Наводим порядок сами: <span class="mark">таблица</span></h2>
+      <p>Такую таблицу вы видели сто раз — Excel, гугл-таблица, CSV. Сложим журнал в таблицу и посмотрим, что изменится.</p>
+      <ul>
+        <li>Одна строка — <b>одно дело</b>. Никаких «историй».</li>
+        <li>Колонка — <b>одно свойство</b>: название; сделано или нет.</li>
+        <li>Состояние «сейчас» видно <b>сразу глазами</b> — перечитывать журнал не нужно.</li>
+      </ul>
+      <div class="note ok"><b>Похоже на правду:</b> это уже структура. Трещины покажу на следующем слайде.</div>
+    </div>
+    <div>
+      <div class="dlabel">из журнала → в таблицу</div>
+      <div class="dwrap"><div id="t4box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t4fold" class="primary">▾ сложить журнал в таблицу</button>
+        <button id="t4reset" class="small">↺</button>
+      </div>
+      <div id="t4note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 5 · трещины таблицы -->
+  <section class="slide">
+    <div class="sheetno">БД · 05 / 15</div>
+    <div>
+      <div class="kicker bad">Где таблица подводит</div>
+      <h2>Порядок есть. <span class="mark-bad">Правил — нет</span></h2>
+      <p>Таблицу заполняют руки. Руки торопятся и ошибаются — и таблица молча принимает всё подряд.</p>
+      <ul>
+        <li><b>«Ага» в ячейке</b> — не ✓ и не ✗, но таблица приняла. Программа потом не поймёт.</li>
+        <li><b>Дубликат:</b> «собрать катку» в двух строках. Какое из двух актуально?</li>
+        <li><b>«Удали дело №3»</b> — а добавили новую строку, и №3 уже другое дело.</li>
+      </ul>
+      <div class="note"><b>Зерно:</b> правила должен соблюдать кто-то, кто не устаёт. Нужен файл, который следит за порядком <b>сам</b>.</div>
+    </div>
+    <div>
+      <div class="dlabel">таблица дел — попробуй сломать</div>
+      <div class="dwrap"><div id="t5box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t5bad" class="small bad">вписать «ага»</button>
+        <button id="t5dup" class="small bad">продублировать катку</button>
+        <button id="t5del" class="small bad">удалить дело №3</button>
+        <button id="t5reset" class="small">↺</button>
+      </div>
+      <div id="t5note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 6 · вывод -->
+  <section class="slide">
+    <div class="sheetno">БД · 06 / 15</div>
+    <div>
+      <div class="kicker ok">Что получилось</div>
+      <h2>Это и есть <span class="mark">база данных</span></h2>
+      <p>Соберём вывод из трёх попыток — по кусочку на каждую.</p>
+      <ul>
+        <li><b>Попытка 2</b> показала: данные должны жить в файле — дольше программы.</li>
+        <li><b>Попытка 3</b> показала: данные нужны строками и колонками, а не свалкой строк.</li>
+        <li><b>Трещины таблицы</b> показали: правила должны проверяться сами — типы, уникальные номера, обязательные поля.</li>
+        <li>И нужен язык, чтобы просить: <b>«дай несделанные»</b> — не перечитывая всё глазами.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">формула</div>
+      <div class="slots">
+        <div class="slot"><span class="plus">+</span><span class="t">файл</span><span class="d">данные дольше программы</span></div>
+        <div class="slot"><span class="plus">+</span><span class="t">структура</span><span class="d">строки и колонки</span></div>
+        <div class="slot"><span class="plus">+</span><span class="t">правила</span><span class="d">типы · уникальный номер · нельзя пустое</span></div>
+        <div class="slot"><span class="plus">+</span><span class="t">язык запросов</span><span class="d">просить, а не выкапывать</span></div>
+      </div>
+      <div class="btnrow">
+        <button id="t6go" class="primary">▸ собрать по кусочку</button>
+        <button id="t6reset" class="small">↺</button>
+      </div>
+      <div id="t6formula" class="formula">файл + структура + правила + язык запросов = <b>база данных</b></div>
+      <div id="t6note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 7 · строка и колонка -->
+  <section class="slide">
+    <div class="sheetno">БД · 07 / 15</div>
+    <div>
+      <div class="kicker">Словарь</div>
+      <h2>Строка — запись. Колонка — свойство</h2>
+      <p>Кликните по строке и по названию колонки — таблица подскажет, что есть что.</p>
+      <ul>
+        <li><b>Строка</b> — одна запись целиком: одно дело со всеми свойствами.</li>
+        <li><b>Колонка</b> — одно свойство, одинаковое у всех строк.</li>
+        <li><b>id</b> — уникальный номер записи. Его назначает база и больше не меняет: «дело №2» — это всегда одно и то же дело.</li>
+      </ul>
+      <div class="note"><b>Зачем id:</b> строка №3 в таблице плавает при вставках и удалениях, а <code>id = 3</code> — нет. Именно его используют UPDATE и DELETE.</div>
+    </div>
+    <div>
+      <div class="dlabel">таблица todos</div>
+      <div class="dwrap"><div id="t7box"></div></div>
+      <div id="t7label" class="hintline">— клик по строке или по названию колонки —</div>
+    </div>
+  </section>
+
+  <!-- 8 · SQLite -->
+  <section class="slide">
+    <div class="sheetno">БД · 08 / 15</div>
+    <div>
+      <div class="kicker ok">Готовое решение</div>
+      <h2>SQLite: <span class="mark">вся база — один файл</span></h2>
+      <p>Всё, что мы сформулировали, уже сделано за нас. <strong>SQLite</strong> — это база данных, которая живёт в одном файле рядом с программой.</p>
+      <ul>
+        <li>Вся база — <b>один файл</b> <code>database.db</code>: скопировать, перенести на флешку, удалить.</li>
+        <li><b>Сервер не нужен:</b> база рядом с программой, как обычный файл.</li>
+        <li>Модуль <code>sqlite3</code> в Python <b>уже есть</b> — ничего ставить не нужно.</li>
+        <li>Такая база стоит <b>в каждом телефоне</b>: чаты, заметки, настройки — всё в файлах SQLite.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">проект</div>
+      <div class="ftree">
+        <div>проект/</div>
+        <div>&nbsp;&nbsp;├─ main.py&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">← программа</span></div>
+        <div class="db">&nbsp;&nbsp;├─ database.db&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">← вся база: один файл</span></div>
+        <div>&nbsp;&nbsp;└─ lessons/</div>
+      </div>
+      <div class="btnrow">
+        <button id="t8open" class="primary">▸ что внутри database.db?</button>
+      </div>
+      <div id="t8reveal" class="reveal">
+        <div class="note"><b>Внутри — таблицы.</b> Например, <code>todos</code>: те же строки с делами из попытки №3, только правила — типы, уникальные id, обязательные поля — файл проверяет сам.</div>
+        <div class="note ok"><b>Порядок работы:</b> открыл файл → попросил на SQL → получил ответ → закрыл.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · CREATE TABLE -->
+  <section class="slide">
+    <div class="sheetno">БД · 09 / 15</div>
+    <div>
+      <div class="kicker">Паспорт таблицы</div>
+      <h2>CREATE TABLE — <span class="mark">правила один раз</span></h2>
+      <p>Колонки и правила описываются один раз — дальше <strong>таблица проверяет сама</strong>. Кликните по строке паспорта.</p>
+      <ul>
+        <li><b>Типы:</b> в колонке числа — только числа, текст — только текст.</li>
+        <li><b>PRIMARY KEY</b> — уникальный номер строки: повторить нельзя.</li>
+        <li><b>NOT NULL</b> — пустым оставлять нельзя.</li>
+        <li><b>IF NOT EXISTS</b> — повторный запуск скрипта не упадёт: таблица уже есть.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">паспорт</div>
+      <div class="term">
+        <div class="term-bar"><span class="tdot r"></span><span class="tdot y"></span><span class="tdot g"></span><span class="term-title">schema.sql — паспорт таблицы todos</span></div>
+        <div class="term-body" id="t9code">
+          <div class="cline"><span class="k">CREATE TABLE</span> <span class="k2">IF NOT EXISTS</span> todos (</div>
+          <div class="cline colclick" data-col="id">&nbsp;&nbsp;id&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">INTEGER</span> <span class="k">PRIMARY KEY</span>,</div>
+          <div class="cline colclick" data-col="name">&nbsp;&nbsp;name&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">TEXT</span> <span class="k">NOT NULL</span>,</div>
+          <div class="cline colclick" data-col="description">&nbsp;&nbsp;description&nbsp;&nbsp;<span class="k">TEXT</span>,</div>
+          <div class="cline colclick" data-col="done">&nbsp;&nbsp;done&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">INTEGER</span></div>
+          <div class="cline">);</div>
+        </div>
+      </div>
+      <div id="t9hint" class="hintline">— клик по строке паспорта —</div>
+      <div id="t9expl" class="note" style="min-height:92px">Колонки — это договор: в каждой строке на этом месте лежит одно и то же свойство, и оно одного типа.</div>
+    </div>
+  </section>
+
+  <!-- 10 · INSERT -->
+  <section class="slide">
+    <div class="sheetno">БД · 10 / 15</div>
+    <div>
+      <div class="kicker">Python · положить</div>
+      <h2>connect → execute → <span class="mark">commit</span></h2>
+      <p>С базой говорят тремя шагами: открыть файл, выполнить SQL, сохранить изменения в файле.</p>
+<pre><span class="p">import</span> sqlite3
+
+<span class="c"># открыть базу: файла нет — создастся</span>
+conn = sqlite3.<span class="f">connect</span>(<span class="s">'database.db'</span>)
+
+conn.<span class="f">execute</span>(
+    <span class="s">"INSERT INTO todos (name, description, done)"</span>
+    <span class="s">" VALUES (?, ?, ?)"</span>,
+    (<span class="s">"разобрать рюкзак"</span>, <span class="s">"после пар"</span>, <span class="n">0</span>),
+)
+conn.<span class="f">commit</span>()   <span class="c"># сохранить в файл</span>
+conn.<span class="f">close</span>()</pre>
+      <ul>
+        <li><code>?</code> — места подстановки: <b>данные идут отдельно</b> от текста запроса. Почему это важно — на слайде про инъекции.</li>
+        <li><code>commit()</code> — «нажать сохранить»: без него изменения <b>не попадут в файл</b>.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">таблица todos</div>
+      <div class="dwrap"><div id="t10box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t10a" class="small">▸ INSERT «разобрать рюкзак»</button>
+        <button id="t10b" class="small">▸ INSERT «новый эпизод»</button>
+        <button id="t10c" class="small">▸ INSERT «позвонить бабушке»</button>
+      </div>
+      <div class="dlabel" style="margin-top:12px">что выполнилось</div>
+      <div class="sqllog" id="t10log"></div>
+    </div>
+  </section>
+
+  <!-- 11 · SELECT -->
+  <section class="slide">
+    <div class="sheetno">БД · 11 / 15</div>
+    <div>
+      <div class="kicker">Python · спросить</div>
+      <h2>SELECT — скажи, <span class="mark">что</span> нужно</h2>
+      <p>В Python вы описываете <strong>как</strong> искать: цикл и проверки. В SQL вы просто говорите, <strong>что</strong> вам нужно:</p>
+      <div class="tworow">
+<pre class="c-code"><span class="c"># питон: КАК</span>
+left = []
+<span class="p">for</span> t <span class="p">in</span> todos:
+    <span class="p">if</span> t[<span class="s">'done'</span>] == <span class="n">0</span>:
+        left.<span class="f">append</span>(t)</pre>
+<pre class="c-code"><span class="c">-- SQL: ЧТО</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> todos
+<span class="k">WHERE</span> done = <span class="n">0</span>;</pre>
+      </div>
+      <ul>
+        <li><code>fetchall()</code> — все строки; <code>fetchone()</code> — первая (или <code>None</code>); <code>fetchmany(3)</code> — не больше трёх.</li>
+        <li><code>WHERE</code> — фильтр: <b>дай только те, у которых done = 0</b>.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">спроси базу — и получишь ответ</div>
+      <div class="console">
+        <div class="console-row"><span class="prompt">sql&gt;</span><input id="t11q" spellcheck="false" value="SELECT * FROM todos"><button id="t11run" class="primary small">▶</button></div>
+        <div class="console-chips">
+          <button class="cchip" data-q="SELECT * FROM todos">все дела</button>
+          <button class="cchip" data-q="SELECT name FROM todos">только названия</button>
+          <button class="cchip" data-q="SELECT * FROM todos WHERE done = 0">несделанные</button>
+          <button class="cchip" data-q="SELECT * FROM todos WHERE done = 1">сделанные</button>
+        </div>
+        <div class="console-result" id="t11res"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 · кнопки — это SQL -->
+  <section class="slide">
+    <div class="sheetno">БД · 12 / 15</div>
+    <div>
+      <div class="kicker">Четыре глагола</div>
+      <h2>Кнопки приложения — <span class="mark">это SQL</span></h2>
+      <p>Любое приложение с данными делает ровно четыре вещи. Каждая кнопка — одна команда базе:</p>
+<pre><span class="k">INSERT</span> <span class="k">INTO</span> todos (name, description, done)
+    <span class="k">VALUES</span> (?, ?, ?)             <span class="c">-- положить</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> todos              <span class="c">-- посмотреть</span>
+<span class="k">UPDATE</span> todos <span class="k">SET</span> done = <span class="n">1</span>
+    <span class="k">WHERE</span> id = <span class="n">3</span>                 <span class="c">-- изменить</span>
+<span class="k">DELETE</span> <span class="k">FROM</span> todos <span class="k">WHERE</span> id = <span class="n">2</span>  <span class="c">-- удалить</span></pre>
+      <ul>
+        <li><b>WHERE id = …</b> — «кому именно»: изменить или удалить одну запись по номеру.</li>
+        <li>Без WHERE <code>UPDATE</code> изменит <b>все</b> строки, <code>DELETE</code> — удалит <b>всё</b>. База честно выполнит.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">мини-приложение: кнопки пишут SQL</div>
+      <div class="todopanel">
+        <div class="addrow">
+          <input id="t12input" placeholder="новое дело…">
+          <button id="t12add" class="primary">＋ добавить</button>
+        </div>
+        <div class="dwrap" style="margin-top:10px"><div id="t12box" class="min-h"></div></div>
+        <div class="dlabel" style="margin-top:10px">лог запросов</div>
+        <div class="sqllog" id="t12log"><div class="lbl">— нажми любую кнопку —</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 · ловушка: commit -->
+  <section class="slide">
+    <div class="sheetno">БД · 13 / 15</div>
+    <div>
+      <div class="kicker bad">Ловушка №1</div>
+      <h2>Забыли <span class="mark-bad">commit()</span> — изменений нет</h2>
+      <p>Пока не вызван <code>commit()</code>, изменения живут только <strong>в памяти соединения</strong>. Файл <code>database.db</code> про них не знает.</p>
+<pre>conn.<span class="f">execute</span>(<span class="s">"INSERT INTO todos (name, done)"</span>
+             <span class="s">" VALUES (?, ?)"</span>, (<span class="s">"выспаться"</span>, <span class="n">0</span>))
+
+conn.<span class="f">commit</span>()   <span class="c"># ← без этой строки</span>
+conn.<span class="f">close</span>()    <span class="c"># строка исчезнет</span></pre>
+      <ul>
+        <li>Справа: <b>INSERT</b> — строка появилась. Но она в памяти соединения.</li>
+        <li>Выключите <b>commit</b> и закройте соединение.</li>
+        <li>База открывается заново — <b>строки нет</b>. Она честная: её никто не сохранил.</li>
+      </ul>
+      <div class="note ok"><b>Правило:</b> INSERT / UPDATE / DELETE — и следом <code>commit()</code>. После SELECT сохранять нечего.</div>
+    </div>
+    <div>
+      <div class="dlabel">попробуй сам</div>
+      <div class="dwrap"><div id="t13box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t13ins" class="small">▸ INSERT «выспаться»</button>
+        <button id="t13cm" class="small ok">commit: вкл</button>
+        <button id="t13cl" class="small bad">✕ close()</button>
+        <button id="t13reset" class="small">↺</button>
+      </div>
+      <div id="t13note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 14 · ловушка: инъекция -->
+  <section class="slide">
+    <div class="sheetno">БД · 14 / 15</div>
+    <div>
+      <div class="kicker bad">Ловушка №2</div>
+      <h2>SQL-инъекция: <span class="mark-bad">строки нельзя склеивать</span></h2>
+      <p>Если вставить данные прямо в текст запроса, данные становятся <strong>частью команды</strong>. Представьте, что в поле «новое дело» вписали:</p>
+      <pre class="badline">выспаться'); DELETE FROM todos;--</pre>
+      <p>Склейка строк даст базе <b>две команды вместо одной</b>:</p>
+<pre><span class="k">INSERT</span> <span class="k">INTO</span> todos (name, done) <span class="k">VALUES</span> (<span class="s">'выспаться'</span>);
+<span class="k">DELETE</span> <span class="k">FROM</span> todos; <span class="c">--', 0)  ← после -- это комментарий</span></pre>
+      <p>INSERT добавил дело — а следом DELETE <b>стёр все дела</b>. Троллю даже не нужен был доступ к базе.</p>
+      <div class="note ok"><b>Решение — ?:</b> данные идут отдельным параметром. База знает: это значение, а не команда. Весь этот текст просто ляжет в колонку name.</div>
+    </div>
+    <div>
+      <div class="dlabel">два способа вставить это дело</div>
+      <div class="addrow"><input id="t14input" readonly value="выспаться'); DELETE FROM todos;--"></div>
+      <div class="btnrow">
+        <button id="t14bad" class="small bad">❌ склеить строки</button>
+        <button id="t14good" class="small ok">✅ передать через ?</button>
+        <button id="t14reset" class="small">↺</button>
+      </div>
+      <div class="dwrap"><div id="t14box" class="min-h"></div></div>
+      <div id="t14note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 15 · итог -->
+  <section class="slide center">
+    <div class="sheetno">БД · 15 / 15</div>
+    <div>
+      <div class="kicker ok">Запомнить</div>
+      <h2>База данных — файл, который <span class="mark">сам следит за порядком</span></h2>
+      <div class="cards">
+        <div class="card"><div class="t">1 · файл + структура</div><div class="d"><code>database.db</code> рядом с программой: строки и колонки, состояние «сейчас».</div></div>
+        <div class="card"><div class="t">2 · правила</div><div class="d"><code>CREATE TABLE</code>: типы, <code>PRIMARY KEY</code>, <code>NOT NULL</code>. Проверяет база, а не руки.</div></div>
+        <div class="card"><div class="t">3 · четыре глагола</div><div class="d"><code>INSERT</code> положить · <code>SELECT</code> спросить · <code>UPDATE</code> изменить · <code>DELETE</code> удалить.</div></div>
+        <div class="card"><div class="t">4 · два правила на каждый день</div><div class="d">После изменений — <code>commit()</code>. Данные — через <code>?</code>, не склейкой.</div></div>
+      </div>
+      <div class="note" style="max-width:860px; margin-top:16px"><b>Открой свой <code>lessons/database.py</code></b> — там всё это: <code>create_tables()</code> — паспорт, <code>add_todo()</code> — INSERT, <code>get_all_todos()</code> — SELECT, <code>delete_todo()</code> — DELETE.</div>
+      <div class="nextline">Дальше: <b>сохранения игры</b> — <code>databases-part2.html</code></div>
+    </div>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="btns">
+    <button id="prev">← Назад</button>
+    <button id="next" class="primary">Далее →</button>
+  </div>
+  <div id="dots"></div>
+  <div class="hint">стрелки ← → / пробел</div>
+</footer>
+
+<script>
+/* ── каркас навигации ── */
+let i = 0;
+const slides = [...document.querySelectorAll('.slide')];
+const dotsBox = document.getElementById('dots');
+const counter = document.getElementById('counter');
+const progress = document.getElementById('progress');
+slides.forEach((_, n) => {
+  const d = document.createElement('button');
+  d.className = 'dot' + (n === 0 ? ' on' : '');
+  d.setAttribute('aria-label', 'слайд ' + (n + 1));
+  d.onclick = () => go(n);
+  dotsBox.appendChild(d);
+});
+const dots = [...dotsBox.children];
+function go(n) {
+  i = (n + slides.length) % slides.length;
+  slides.forEach((s, k) => s.classList.toggle('active', k === i));
+  dots.forEach((d, k) => d.classList.toggle('on', k === i));
+  counter.textContent = (i + 1) + ' / ' + slides.length;
+  progress.style.width = ((i + 1) / slides.length * 100) + '%';
+  slides[i].scrollTop = 0;
+  try { history.replaceState(null, '', '#' + (i + 1)); } catch (e) { /* file:// не даёт менять историю */ }
+}
+window.addEventListener('hashchange', () => {
+  const n = parseInt(location.hash.slice(1), 10);
+  if (!isNaN(n)) go(n - 1);
+});
+document.getElementById('next').onclick = () => go(i + 1);
+document.getElementById('prev').onclick = () => go(i - 1);
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(i + 1); }
+  if (e.key === 'ArrowLeft') go(i - 1);
+});
+let x0 = null;
+window.addEventListener('touchstart', e => x0 = e.touches[0].clientX, { passive: true });
+window.addEventListener('touchend', e => {
+  if (x0 === null) return;
+  const dx = e.changedTouches[0].clientX - x0;
+  if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
+  x0 = null;
+}, { passive: true });
+function fit() {
+  const deck = document.querySelector('.deck');
+  if (!deck) return;
+  deck.style.zoom = '';
+  slides.forEach(s => { s.style.maxHeight = ''; });
+  if (window.innerWidth <= 860) return;
+  const avail = window.innerHeight - 169;
+  let max = 0; const cur = i;
+  slides.forEach(s => { s.classList.add('active'); if (s.scrollHeight > max) max = s.scrollHeight; });
+  go(cur);
+  let z = avail / max;
+  if (z > 1) z = 1;
+  if (z < 0.55) z = 0.55;
+  if (z < 1) {
+    deck.style.zoom = z;
+    slides.forEach(s => { s.style.maxHeight = 'none'; });
+  }
+}
+const startSlide = parseInt(location.hash.slice(1), 10);
+go(isNaN(startSlide) ? 0 : startSlide - 1);
+fit();
+window.addEventListener('resize', fit);
+window.addEventListener('load', fit);
+
+/* ── утилиты ── */
+const escMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = s => String(s).replace(/[&<>"']/g, c => escMap[c]);
+const byId = id => document.getElementById(id);
+function logSql(box, html) {
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  box.appendChild(d);
+  while (box.children.length > 40) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+const lit = v => typeof v === 'number' ? String(v) : "'" + String(v).replace(/'/g, "''") + "'";
+
+/* ── мини-SQL: SELECT / INSERT / UPDATE / DELETE на зашитых таблицах ── */
+function seedDb(tables) { return JSON.parse(JSON.stringify(tables)); }
+function splitTop(s) {
+  const out = []; let cur = '', q = null;
+  for (const ch of s) {
+    if (q) { cur += ch; if (ch === q) q = null; continue; }
+    if (ch === "'" || ch === '"') { q = ch; cur += ch; continue; }
+    if (ch === ',') { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  if (cur.trim() !== '') out.push(cur.trim());
+  return out;
+}
+function unq(tok) {
+  tok = tok.trim();
+  let m = tok.match(/^'(.*)'$/); if (m) return { str: m[1].replace(/''/g, "'") };
+  m = tok.match(/^"(.*)"$/); if (m) return { str: m[1].replace(/""/g, '"') };
+  if (/^-?\d+$/.test(tok)) return { num: parseInt(tok, 10) };
+  return null;
+}
+function parseWhere(w) {
+  const m = w.match(/^(\w+)\s*(=|>|<)\s*(.+)$/);
+  if (!m) return null;
+  const v = unq(m[3]);
+  if (!v) return null;
+  return { col: m[1], op: m[2], val: v };
+}
+function whereMatch(row, w) {
+  const a = row[w.col];
+  if (w.op === '=') {
+    if (w.val.num !== undefined) return Number(a) === w.val.num;
+    return String(a).toLowerCase() === String(w.val.str).toLowerCase();
+  }
+  const an = typeof a === 'number' ? a : parseFloat(a);
+  if (w.val.num === undefined || isNaN(an)) return false;
+  return w.op === '>' ? an > w.val.num : an < w.val.num;
+}
+function runSql(db, sqlIn) {
+  const sql = sqlIn.trim().replace(/;+\s*$/, '');
+  let m;
+  m = /^select\s+(.+?)\s+from\s+(\w+)(?:\s+where\s+(.+))?$/i.exec(sql);
+  if (m) {
+    const t = db[m[2].toLowerCase()];
+    if (!t) return { err: 'нет таблицы ' + m[2] };
+    let cols;
+    if (m[1].trim() === '*') cols = t.cols.slice();
+    else {
+      cols = splitTop(m[1]);
+      for (const c of cols) if (!t.cols.includes(c)) return { err: 'нет колонки ' + c };
+    }
+    let rows = t.rows;
+    if (m[3]) {
+      const w = parseWhere(m[3]);
+      if (!w || !t.cols.includes(w.col)) return { err: 'не понял WHERE: жду «колонка = значение»' };
+      rows = rows.filter(r => whereMatch(r, w));
+    }
+    return { type: 'select', cols, rows };
+  }
+  m = /^insert\s+into\s+(\w+)\s*\(([^)]*)\)\s*values\s*\((.*)\)$/i.exec(sql);
+  if (m) {
+    const t = db[m[1].toLowerCase()];
+    if (!t) return { err: 'нет таблицы ' + m[1] };
+    const cols = splitTop(m[2]), vals = splitTop(m[3]);
+    if (cols.length !== vals.length) return { err: 'колонок (' + cols.length + ') и значений (' + vals.length + ') — не поровну' };
+    const row = {};
+    for (let k = 0; k < cols.length; k++) {
+      const c = cols[k];
+      if (!t.cols.includes(c)) return { err: 'нет колонки ' + c };
+      if (c.toLowerCase() === 'id') return { err: 'id назначает база сама — не указывай его' };
+      const v = unq(vals[k]);
+      if (!v) return { err: 'не понял значение ' + vals[k] + ' — текст бери в кавычки' };
+      row[c] = v.num !== undefined ? v.num : v.str;
+    }
+    for (const c of t.cols) {
+      if (t.notnull.includes(c) && (row[c] === undefined || row[c] === '')) return { err: c + ': NOT NULL — пусто нельзя' };
+      if (row[c] !== undefined && t.nums.includes(c) && typeof row[c] === 'string' && /^-?\d+$/.test(row[c].trim())) row[c] = parseInt(row[c], 10);
+    }
+    for (const c of t.cols) if (row[c] === undefined) row[c] = '';
+    row.id = ++t.seq;
+    t.rows.push(row);
+    return { type: 'write', table: m[1].toLowerCase(), n: 1 };
+  }
+  m = /^update\s+(\w+)\s+set\s+(.+?)(?:\s+where\s+(.+))?$/i.exec(sql);
+  if (m) {
+    const t = db[m[1].toLowerCase()];
+    if (!t) return { err: 'нет таблицы ' + m[1] };
+    const sets = [];
+    for (const a of splitTop(m[2])) {
+      const am = a.match(/^(\w+)\s*=\s*(.+)$/);
+      if (!am) return { err: 'не понял SET: жду «колонка = значение»' };
+      const col = am[1];
+      if (!t.cols.includes(col)) return { err: 'нет колонки ' + col };
+      const st = { col };
+      const inc = am[2].match(/^(\w+)\s*\+\s*(\d+)$/);
+      if (inc) {
+        if (inc[1].toLowerCase() !== col.toLowerCase()) return { err: 'прибавлять можно только к той же колонке' };
+        st.inc = parseInt(inc[2], 10);
+      } else {
+        const v = unq(am[2]);
+        if (!v) return { err: 'не понял значение ' + am[2] };
+        st.val = v.num !== undefined ? v.num : v.str;
+      }
+      sets.push(st);
+    }
+    let rows = t.rows;
+    if (m[3]) {
+      const w = parseWhere(m[3]);
+      if (!w || !t.cols.includes(w.col)) return { err: 'не понял WHERE' };
+      rows = rows.filter(r => whereMatch(r, w));
+    }
+    for (const r of rows) for (const st of sets) {
+      if (st.inc !== undefined) r[st.col] = (typeof r[st.col] === 'number' ? r[st.col] : (parseInt(r[st.col], 10) || 0)) + st.inc;
+      else r[st.col] = st.val;
+    }
+    return { type: 'write', table: m[1].toLowerCase(), n: rows.length, whereless: !m[3] };
+  }
+  m = /^delete\s+from\s+(\w+)(?:\s+where\s+(.+))?$/i.exec(sql);
+  if (m) {
+    const t = db[m[1].toLowerCase()];
+    if (!t) return { err: 'нет таблицы ' + m[1] };
+    let rows = t.rows;
+    if (m[2]) {
+      const w = parseWhere(m[2]);
+      if (!w || !t.cols.includes(w.col)) return { err: 'не понял WHERE' };
+      rows = rows.filter(r => whereMatch(r, w));
+    }
+    const ids = rows.map(r => r.id);
+    t.rows = t.rows.filter(r => !ids.includes(r.id));
+    return { type: 'write', table: m[1].toLowerCase(), n: ids.length, whereless: !m[2] };
+  }
+  return { err: 'демо понимает только SELECT, INSERT, UPDATE и DELETE' };
+}
+function resultHtml(res) {
+  if (res.err) return '<div class="res-err">✗ ' + esc(res.err) + '</div>';
+  if (res.type === 'write') return '<div class="res-ok">✓ готово · затронуто строк: ' + res.n + '</div>';
+  if (!res.rows.length) return '<div class="res-empty">— ни одной строки —</div>';
+  let h = '<table class="dtab"><thead><tr>' + res.cols.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>';
+  for (const r of res.rows) {
+    h += '<tr>' + res.cols.map(c => {
+      const v = r[c];
+      if (c === 'done') return '<td>' + (v ? '<span class="yes">✓</span>' : '<span class="no">✗</span>') + '</td>';
+      return '<td>' + (v === '' ? '<span class="dimcell">—</span>' : esc(v)) + '</td>';
+    }).join('') + '</tr>';
+  }
+  return h + '</tbody></table>';
+}
+const todoFmt = {
+  row: r => r.done ? 'off' : '',
+  cell: (c, v) => c === 'done'
+    ? (v ? '<span class="yes">✓</span>' : '<span class="no">✗</span>')
+    : (v === '' ? '<span class="dimcell">—</span>' : esc(v))
+};
+function tblHtml(t, fmt) {
+  fmt = fmt || todoFmt;
+  const cell = fmt.cell, row = fmt.row || (() => '');
+  let h = '<table class="dtab"><thead><tr>' +
+    t.cols.map(c => '<th' + (fmt.clickCols ? ' class="click" data-col="' + c + '"' : '') + '>' + esc(c) + '</th>').join('') +
+    '</tr></thead><tbody>';
+  if (!t.rows.length) h += '<tr><td class="dempty" colspan="' + t.cols.length + '">— ни одной строки —</td></tr>';
+  for (const r of t.rows) {
+    h += '<tr class="' + row(r) + '">' + t.cols.map(c => '<td>' + cell(c, r[c], r) + '</td>').join('') + '</tr>';
+  }
+  return h + '</tbody></table>';
+}
+const todosShort = {
+  todos: {
+    cols: ['id', 'name', 'done'],
+    nums: ['id', 'done'],
+    notnull: ['name'],
+    seq: 4,
+    rows: [
+      { id: 1, name: 'собрать катку в 21:00', done: 0 },
+      { id: 2, name: 'сходить за шаурмой', done: 0 },
+      { id: 3, name: 'ДЗ по питону', done: 1 },
+      { id: 4, name: 'выспаться', done: 0 }
+    ]
+  }
+};
+const todosFull = {
+  todos: {
+    cols: ['id', 'name', 'description', 'done'],
+    nums: ['id', 'done'],
+    notnull: ['name'],
+    seq: 4,
+    rows: [
+      { id: 1, name: 'собрать катку в 21:00', description: 'взять микрофон', done: 0 },
+      { id: 2, name: 'сходить за шаурмой', description: '', done: 0 },
+      { id: 3, name: 'ДЗ по питону', description: 'урок 7', done: 1 },
+      { id: 4, name: 'выспаться', description: '', done: 0 }
+    ]
+  }
+};
+
+/* ── слайд 2 · память ── */
+(function () {
+  const seed = ['собрать катку в 21:00', 'ДЗ по питону', 'сходить за шаурму'];
+  let items = seed.slice(), closed = false;
+  const list = byId('t2list'), note = byId('t2note'), input = byId('t2input'),
+    add = byId('t2add'), close = byId('t2close'), reset = byId('t2reset');
+  function render() {
+    if (closed) {
+      list.innerHTML = '<div class="dempty" style="min-height:170px;display:grid;place-items:center">— программа не запущена: списка нет —</div>';
+      note.innerHTML = '<b>Запустили заново</b> — приложение работает. А дел нет: они жили только в памяти.';
+      close.disabled = true; add.disabled = true; input.disabled = true;
+      return;
+    }
+    close.disabled = false; add.disabled = false; input.disabled = false;
+    note.innerHTML = '';
+    list.innerHTML = items.length
+      ? items.map(x => '<div class="todo">' + esc(x) + '</div>').join('')
+      : '<div class="dempty">— пусто —</div>';
+  }
+  add.onclick = () => { const v = input.value.trim(); if (!v) return; items.push(v); input.value = ''; render(); };
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') add.onclick(); });
+  close.onclick = () => { closed = true; render(); };
+  reset.onclick = () => { items = seed.slice(); closed = false; input.value = ''; render(); };
+  render();
+})();
+
+/* ── слайд 3 · файл-дневник ── */
+(function () {
+  const body = byId('t3body'), title = byId('t3title');
+  let lines = [
+    { cls: 't-comment', text: '# суббота' },
+    { cls: 't-add', text: 'добавил: собрать катку в 21:00' },
+    { cls: 't-add', text: 'добавил: ДЗ по питону' },
+    { cls: 't-add', text: 'добавил: сходить за шаурму' },
+    { cls: 't-comment', text: '# воскресенье' },
+    { cls: 't-ok', text: 'сделал: ДЗ по питону' },
+    { cls: 't-bad', text: 'отменилось: катка — перенесли' },
+    { cls: 't-add', text: 'добавил: собрать катку в 21:00' }
+  ];
+  const presets = {
+    add: ['добавил: разобрать рюкзак', 'добавил: посмотреть новый эпизод', 'добавил: позвонить бабушке'],
+    done: ['сделал: сходить за шаурмой', 'сделал: разобрать рюкзак'],
+    cancel: ['отменилось: катка — не собрались', 'отменилось: посмотреть новый эпизод'],
+    restart: ['# перезапуск — файл на месте, дела в нём']
+  };
+  let ai = 0, di = 0, ci = 0;
+  function render() {
+    title.textContent = 'журнал.txt — ' + lines.length + ' строк';
+    body.innerHTML = lines.map(l => '<div class="' + l.cls + '">' + esc(l.text) + '</div>').join('');
+    body.scrollTop = body.scrollHeight;
+  }
+  byId('t3add').onclick = () => { lines.push({ cls: 't-add', text: presets.add[ai++ % presets.add.length] }); render(); };
+  byId('t3done').onclick = () => { lines.push({ cls: 't-ok', text: presets.done[di++ % presets.done.length] }); render(); };
+  byId('t3cancel').onclick = () => { lines.push({ cls: 't-bad', text: presets.cancel[ci++ % presets.cancel.length] }); render(); };
+  byId('t3restart').onclick = () => { lines.push({ cls: 't-comment', text: presets.restart[0] }); render(); };
+  render();
+})();
+
+/* ── слайд 4 · таблица из журнала ── */
+(function () {
+  const box = byId('t4box'), note = byId('t4note'), fold = byId('t4fold');
+  const rows = [
+    { name: 'сходить за шаурмой', done: 0 },
+    { name: 'собрать катку в 21:00', done: 0 },
+    { name: 'ДЗ по питону', done: 1 }
+  ];
+  let shown = false, timer = null;
+  function render(n) {
+    const t = { cols: ['name', 'done'], rows: rows.slice(0, n) };
+    box.innerHTML = n ? tblHtml(t) : '<div class="dempty" style="min-height:200px;display:grid;place-items:center">— в журнале 8 строк про дела —</div>';
+  }
+  fold.onclick = () => {
+    if (shown || timer) return;
+    let n = 0;
+    timer = setInterval(() => {
+      n++;
+      render(n);
+      if (n >= rows.length) {
+        clearInterval(timer); timer = null; shown = true;
+        fold.disabled = true;
+        note.innerHTML = '<b class="ok">Три дела — три строки.</b> Сделанное приглушено. Состояние «сейчас» — сразу видно.';
+      }
+    }, 450);
+  };
+  byId('t4reset').onclick = () => {
+    if (timer) { clearInterval(timer); timer = null; }
+    shown = false; fold.disabled = false; note.innerHTML = ''; render(0);
+  };
+  render(0);
+})();
+
+/* ── слайд 5 · трещины таблицы ── */
+(function () {
+  const box = byId('t5box'), note = byId('t5note');
+  let rows;
+  const seed = () => ([
+    { name: 'собрать катку в 21:00', done: 0 },
+    { name: 'сходить за шаурмой', done: 0 },
+    { name: 'ДЗ по питону', done: 1 },
+    { name: 'выспаться', done: 0 }
+  ]);
+  function render() {
+    box.innerHTML = tblHtml({ cols: ['№', 'name', 'done'], rows: rows.map((r, k) => ({ '№': k + 1, name: r.name, done: r.done, _bad: r.bad, _dup: r.dup })) }, {
+      row: r => (r.done && !r._bad ? 'off' : ''),
+      cell: (c, v, r) => {
+        if (c === 'done') return r._bad ? '<span class="bad-cell">' + esc(v) + '</span>' : (v ? '<span class="yes">✓</span>' : '<span class="no">✗</span>');
+        if (c === '№') return '<span class="dimcell">' + v + '</span>';
+        if (r._dup) return '<span class="bad-cell">' + esc(v) + '</span>';
+        return esc(v);
+      }
+    });
+  }
+  byId('t5bad').onclick = () => { rows.push({ name: 'купить хлеб', done: 'ага', bad: true }); note.innerHTML = '<b>Таблица приняла «ага»</b> — никто не проверил, что это должно быть ✓ или ✗.'; render(); };
+  byId('t5dup').onclick = () => { rows.push({ name: 'собрать катку в 21:00', done: 0, dup: true }); note.innerHTML = '<b>Два дела про одну катку</b> — которое из них настоящее? Дубликатов никто не ловит.'; render(); };
+  byId('t5del').onclick = () => {
+    if (rows.length > 3) {
+      const gone = rows[2];
+      rows.splice(2, 1);
+      note.innerHTML = '<b>Удалили №3 — это ' + esc(gone.name) + '.</b> А утром №3 было другое дело: добавили строку — и номера сдвинулись. Нажми ещё раз.';
+    } else {
+      note.innerHTML = '<b>Уже нечего удалять.</b> Номер строки — ненадёжный адрес: он меняется при каждой вставке и удалении.';
+    }
+    render();
+  };
+  byId('t5reset').onclick = () => { rows = seed(); note.innerHTML = ''; render(); };
+  rows = seed(); render();
+})();
+
+/* ── слайд 6 · формула ── */
+(function () {
+  const slots = [...document.querySelectorAll('.slots .slot')];
+  const formula = byId('t6formula'), note = byId('t6note'), btn = byId('t6go');
+  let step = 0;
+  function render() {
+    slots.forEach((s, k) => s.classList.toggle('fill', k < step));
+    formula.classList.toggle('show', step >= slots.length);
+    btn.disabled = step >= slots.length;
+    if (step >= slots.length) note.innerHTML = '<b class="ok">Такая штука уже есть готовая</b> — называется SQLite. Она уже в твоём Python.';
+    else note.innerHTML = '';
+  }
+  btn.onclick = () => { if (step < slots.length) { step++; render(); } };
+  byId('t6reset').onclick = () => { step = 0; render(); };
+  render();
+})();
+
+/* ── слайд 7 · строка и колонка ── */
+(function () {
+  const box = byId('t7box'), label = byId('t7label');
+  const db = seedDb(todosShort);
+  const texts = {
+    id: 'id — уникальный номер записи: назначается базой и не меняется.',
+    name: 'name — свойство «название»: у каждой строки своё.',
+    done: 'done — свойство «сделано»: 0 или 1, одинаковое место у всех строк.'
+  };
+  function render(hlRow, hlCol) {
+    box.innerHTML = tblHtml(db.todos, {
+      clickCols: true,
+      row: r => (r.id === hlRow ? 'hl' : ''),
+      cell: (c, v, r) => (c === hlCol ? '<span class="hlc">' + todoFmt.cell(c, v, r) + '</span>' : todoFmt.cell(c, v, r))
+    });
+    box.querySelectorAll('tbody tr').forEach((tr, k) => {
+      tr.onclick = () => {
+        const r = db.todos.rows[k];
+        label.textContent = 'Строка — одна запись: дело «' + r.name + '» целиком, со всеми свойствами.';
+        render(r.id, null);
+      };
+    });
+    box.querySelectorAll('th').forEach(th => {
+      th.onclick = () => {
+        const c = th.dataset.col;
+        label.textContent = texts[c];
+        render(null, c);
+      };
+    });
+  }
+  render(null, null);
+})();
+
+/* ── слайд 8 · SQLite ── */
+byId('t8open').onclick = () => byId('t8reveal').classList.add('open');
+
+/* ── слайд 9 · паспорт ── */
+(function () {
+  const hint = byId('t9hint'), expl = byId('t9expl');
+  const texts = {
+    id: '<b>id · INTEGER PRIMARY KEY</b> — уникальный номер строки. База назначает его сама, если не указать, и не даст поставить второй раз. По нему находят, изменяют и удаляют.',
+    name: '<b>name · TEXT NOT NULL</b> — текст и обязательно заполнен. Дело без названия база не сохранит.',
+    description: '<b>description · TEXT</b> — текст, можно не заполнять: правила NOT NULL нет.',
+    done: '<b>done · INTEGER</b> — в SQLite типа BOOLEAN нет: False хранится как 0, True как 1.'
+  };
+  const lines = [...document.querySelectorAll('#t9code .colclick')];
+  lines.forEach(l => {
+    l.onclick = () => {
+      lines.forEach(x => x.classList.remove('on'));
+      l.classList.add('on');
+      hint.textContent = '— ' + l.dataset.col + ' —';
+      expl.innerHTML = texts[l.dataset.col];
+    };
+  });
+})();
+
+/* ── слайд 10 · INSERT ── */
+(function () {
+  const db = seedDb(todosFull);
+  const box = byId('t10box'), log = byId('t10log');
+  function render() { box.innerHTML = tblHtml(db.todos); }
+  function insert(name, desc) {
+    const res = runSql(db, "INSERT INTO todos (name, description, done) VALUES ('" + name.replace(/'/g, "''") + "', '" + desc + "', 0)");
+    logSql(log, '<span class="cur">' + esc("INSERT INTO todos (name, description, done) VALUES (" + lit(name) + ", " + lit(desc) + ", 0)") + '</span>');
+    logSql(log, '<span class="lbl">conn.commit()</span>');
+    render();
+  }
+  byId('t10a').onclick = () => insert('разобрать рюкзак', 'после пар');
+  byId('t10b').onclick = () => insert('посмотреть новый эпизод', 'до сна');
+  byId('t10c').onclick = () => insert('позвонить бабушке', '');
+  render();
+})();
+
+/* ── слайд 11 · SELECT-консоль ── */
+(function () {
+  const db = seedDb(todosShort);
+  const q = byId('t11q'), res = byId('t11res');
+  function run() {
+    res.innerHTML = resultHtml(runSql(db, q.value));
+  }
+  byId('t11run').onclick = run;
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+  document.querySelectorAll('.cchip[data-q]').forEach(ch => {
+    ch.onclick = () => { q.value = ch.dataset.q; run(); };
+  });
+  run();
+})();
+
+/* ── слайд 12 · CRUD-кнопки ── */
+(function () {
+  const db = seedDb(todosShort);
+  const box = byId('t12box'), log = byId('t12log'), input = byId('t12input');
+  const cur = html => '<span class="cur">' + html + '</span>';
+  function render() {
+    const t = db.todos;
+    let h = '<table class="dtab"><thead><tr>' +
+      t.cols.map(c => '<th>' + esc(c) + '</th>').join('') + '<th></th>' +
+      '</tr></thead><tbody>';
+    if (!t.rows.length) h += '<tr><td class="dempty" colspan="' + (t.cols.length + 1) + '">— ни одной строки —</td></tr>';
+    for (const r of t.rows) {
+      h += '<tr class="' + (r.done ? 'off' : '') + '"><td>' + r.id + '</td><td>' +
+        (r.name === '' ? '<span class="dimcell">—</span>' : esc(r.name)) + '</td>' +
+        '<td><button class="mini ok" data-done="' + r.id + '">' + (r.done ? '↩' : '✓') + '</button></td>' +
+        '<td><button class="mini bad" data-del="' + r.id + '">🗑</button></td></tr>';
+    }
+    box.innerHTML = h + '</tbody></table>';
+    box.querySelectorAll('[data-done]').forEach(b => {
+      b.onclick = () => {
+        const id = +b.dataset.done;
+        const r = db.todos.rows.find(x => x.id === id);
+        const nv = r.done ? 0 : 1;
+        logSql(log, cur(esc('UPDATE todos SET done = ' + nv + ' WHERE id = ' + id + ';')));
+        runSql(db, 'UPDATE todos SET done = ' + nv + ' WHERE id = ' + id);
+        render();
+      };
+    });
+    box.querySelectorAll('[data-del]').forEach(b => {
+      b.onclick = () => {
+        const id = +b.dataset.del;
+        logSql(log, cur(esc('DELETE FROM todos WHERE id = ' + id + ';')));
+        runSql(db, 'DELETE FROM todos WHERE id = ' + id);
+        render();
+      };
+    });
+  }
+  byId('t12add').onclick = () => {
+    const v = input.value.trim();
+    if (!v) return;
+    const ph = log.querySelector('.lbl');
+    if (ph) ph.remove();
+    const sql = "INSERT INTO todos (name, done) VALUES (" + lit(v) + ", 0)";
+    logSql(log, cur(esc(sql + ';')));
+    runSql(db, sql);
+    input.value = '';
+    render();
+  };
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') byId('t12add').onclick(); });
+  render();
+})();
+
+/* ── слайд 13 · commit ── */
+(function () {
+  const db = seedDb(todosShort);
+  const box = byId('t13box'), note = byId('t13note');
+  let autoCommit = true, closed = false;
+  const ins = byId('t13ins'), cm = byId('t13cm'), cl = byId('t13cl');
+  function render() {
+    box.innerHTML = tblHtml(db.todos, {
+      row: r => (r.done ? 'off' : '') + (r.ghost ? ' ghost' : ''),
+      cell: (c, v, r) => {
+        if (c === 'done') return r.ghost ? '<span class="no">' + (v ? '✓' : '✗') + '</span>' : todoFmt.cell(c, v, r);
+        return esc(v);
+      }
+    });
+    cm.innerHTML = 'commit: ' + (autoCommit ? 'вкл' : '<span style="color:var(--bad)">выкл</span>');
+    const hasGhost = db.todos.rows.some(r => r.ghost);
+    ins.disabled = hasGhost || closed;
+    cl.disabled = closed;
+  }
+  ins.onclick = () => {
+    if (closed) return;
+    const res = runSql(db, "INSERT INTO todos (name, done) VALUES ('выспаться', 0)");
+    if (res.err) { note.innerHTML = '<b>' + esc(res.err) + '</b>'; render(); return; }
+    const row = db.todos.rows[db.todos.rows.length - 1];
+    if (autoCommit) {
+      note.innerHTML = '<b class="ok">INSERT и commit() — строка записана в файл.</b> Закрой соединение: она на месте.';
+    } else {
+      row.ghost = true;
+      note.innerHTML = '<b>Строка появилась</b> — но только в памяти соединения. Файл database.db про неё не знает.';
+    }
+    render();
+  };
+  cm.onclick = () => {
+    autoCommit = !autoCommit;
+    note.innerHTML = autoCommit
+      ? '<b class="ok">commit включён.</b> Теперь INSERT будет попадать в файл.'
+      : '<b>commit выключен.</b> Нажми INSERT — строка появится, но не в файле. Затем close().';
+    render();
+  };
+  cl.onclick = () => {
+    if (closed) return;
+    closed = true;
+    const ghosts = db.todos.rows.filter(r => r.ghost);
+    if (ghosts.length) {
+      db.todos.rows = db.todos.rows.filter(r => !r.ghost);
+      note.innerHTML = '<b>Соединение закрылось — и строки нет.</b> База открылась заново: файл её не содержал, commit не вызван.';
+    } else {
+      note.innerHTML = '<b class="ok">Соединение закрыто, всё на месте</b> — изменения были сохранены commit().';
+    }
+    render();
+  };
+  byId('t13reset').onclick = () => {
+    const fresh = seedDb(todosShort);
+    db.todos.rows = fresh.todos.rows;
+    db.todos.seq = fresh.todos.seq;
+    autoCommit = true; closed = false;
+    note.innerHTML = ''; render();
+  };
+  render();
+})();
+
+/* ── слайд 14 · инъекция ── */
+(function () {
+  const db = seedDb(todosShort);
+  const box = byId('t14box'), note = byId('t14note');
+  const evil = "выспаться'); DELETE FROM todos;--";
+  function render() { box.innerHTML = tblHtml(db.todos); }
+  byId('t14bad').onclick = () => {
+    db.todos.rows = [];
+    note.innerHTML = '<b>INSERT выполнился — и следом DELETE FROM todos.</b> Таблица пуста: склеенная строка стала командой.';
+    render();
+  };
+  byId('t14good').onclick = () => {
+    db.todos.rows.push({ id: ++db.todos.seq, name: evil, description: '', done: 0 });
+    note.innerHTML = '<b class="ok">Строка добавлена.</b> В колонке name лежит этот текст — база видит в нём значение, а не команду.';
+    render();
+  };
+  byId('t14reset').onclick = () => {
+    const fresh = seedDb(todosShort);
+    db.todos.rows = fresh.todos.rows;
+    db.todos.seq = fresh.todos.seq;
+    note.innerHTML = ''; render();
+  };
+  render();
+})();
+</script>
+</body>
+</html>

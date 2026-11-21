@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Базы данных — сохранения игры</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1216;
+    --panel: #151a21;
+    --panel2: #1a212b;
+    --panel3: #10151b;
+    --line: #2a323d;
+    --line2: #3a4350;
+    --ink: #e9ebef;
+    --muted: #97a2b1;
+    --dim: #6b7686;
+    --accent: #52c7c0;
+    --accent2: #8fdcd7;
+    --accent-dim: rgba(82, 199, 192, .12);
+    --accent-ink: #062421;
+    --ok: #63b978;
+    --ok-dim: rgba(99, 185, 120, .12);
+    --bad: #e07676;
+    --bad-dim: rgba(224, 118, 118, .12);
+    --mono: "Cascadia Mono", ui-monospace, Consolas, "Courier New", monospace;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background-color: var(--bg);
+    background-image: radial-gradient(ellipse 90% 55% at 50% -12%, var(--accent-dim), transparent 70%);
+    min-height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+
+  header { z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 30px 8px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+  .logo .sheet { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--accent); border: 1px solid var(--line2); background: var(--panel); padding: 3px 10px; border-radius: 999px; }
+  #counter { font-family: var(--mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; border: 1px solid var(--line); background: var(--panel); padding: 4px 12px; border-radius: 999px; }
+  #progressWrap { height: 6px; background: var(--panel3); border-bottom: 1px solid var(--line); }
+  #progress { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .35s; }
+
+  main { flex: 1; z-index: 1; display: grid; place-items: center; padding: 10px 22px 6px; min-height: 0; }
+  .deck { width: min(1600px, 96vw); }
+  .slide {
+    position: relative; display: none;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+    padding: 20px 26px; min-height: 60vh; max-height: calc(100vh - 150px); overflow: hidden;
+    box-shadow: 0 18px 50px -30px rgba(0, 0, 0, .8);
+  }
+  .slide.active { display: grid; grid-template-columns: .94fr 1.06fr; gap: 24px; align-items: center; animation: in .35s ease; }
+  .slide.center { grid-template-columns: 1fr; text-align: center; justify-items: center; }
+  @keyframes in { from { opacity: 0; transform: translateY(10px); } }
+  @media (max-width: 860px) { .slide.active { grid-template-columns: 1fr; } body { overflow: auto; } .slide { overflow-y: auto; max-height: none; } }
+
+  .kicker { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--line2);
+    background: var(--accent-dim); padding: 5px 12px; border-radius: 999px; margin-bottom: 12px; }
+  .kicker::before { content: "▸"; }
+  .kicker.ok { color: var(--ok); background: var(--ok-dim); }
+  .kicker.bad { color: var(--bad); background: var(--bad-dim); }
+
+  h1 { font-size: clamp(28px, 3.4vw, 50px); line-height: 1.08; margin-bottom: 10px; font-weight: 800; letter-spacing: -.01em; }
+  h2 { font-size: clamp(20px, 2.3vw, 29px); line-height: 1.16; margin-bottom: 8px; font-weight: 800; letter-spacing: -.01em; }
+  h1 .mark, h2 .mark { color: var(--accent); }
+  h1 .mark-ok, h2 .mark-ok { color: var(--ok); }
+  h1 .mark-bad, h2 .mark-bad { color: var(--bad); }
+
+  p { color: var(--muted); font-size: clamp(13.5px, 1.4vw, 16px); line-height: 1.55; }
+  p + p { margin-top: 8px; }
+  p strong, li strong { color: var(--ink); font-weight: 650; }
+  code { font-family: var(--mono); font-size: .9em; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--accent2); white-space: nowrap; }
+
+  ul { margin-top: 10px; list-style: none; display: grid; gap: 7px; text-align: left; }
+  li { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 8px 12px; border-radius: 10px;
+    font-size: clamp(12.5px, 1.25vw, 14.5px); line-height: 1.5; color: var(--muted); }
+  li b { color: var(--ink); font-weight: 650; }
+  li.ok { border-left-color: var(--ok); } li.ok b { color: var(--ok); }
+  li.bad { border-left-color: var(--bad); } li.bad b { color: var(--bad); }
+
+  .note { margin-top: 10px; background: var(--accent-dim); border: 1px dashed var(--line2); border-radius: 12px;
+    padding: 10px 13px; font-size: clamp(12.5px, 1.25vw, 14.5px); line-height: 1.55; color: var(--muted); text-align: left; }
+  .note b { color: var(--accent2); }
+  .note.ok { background: var(--ok-dim); } .note.ok b { color: var(--ok); }
+  .note.bad { background: var(--bad-dim); } .note.bad b { color: var(--bad); }
+
+  pre { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px;
+    font-family: var(--mono); font-size: clamp(12.5px, 1.25vw, 15px); line-height: 1.55; overflow: auto;
+    text-align: left; width: 100%; margin-top: 10px; color: var(--ink); }
+  .k { color: var(--accent); font-weight: 700; }
+  .k2 { color: var(--accent2); font-weight: 700; }
+  .p { color: #b3a3e0; font-weight: 700; }
+  .f { color: #82b8e8; }
+  .s { color: var(--ok); }
+  .n { color: #f0a06e; }
+  .c { color: var(--dim); font-style: italic; }
+  .badline { color: var(--bad); border-color: rgba(224, 118, 118, .45); background: var(--bad-dim); }
+
+  .term { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 10px; }
+  .term-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+  .tdot { width: 10px; height: 10px; border-radius: 50%; opacity: .8; }
+  .tdot.r { background: #e07676; } .tdot.y { background: #e9b44c; } .tdot.g { background: #63b978; }
+  .term-title { margin-left: 8px; font-family: var(--mono); font-size: 12px; color: var(--dim); }
+  .term-body { padding: 10px 14px; font-family: var(--mono); font-size: clamp(12.5px, 1.2vw, 14.5px); line-height: 1.6; color: var(--ink); height: 218px; overflow-y: auto; }
+  .t-comment { color: var(--dim); }
+  .t-ok { color: var(--ok); } .t-bad { color: var(--bad); } .t-add { color: var(--accent2); }
+
+  .dlabel { font-family: var(--mono); font-size: 11px; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; }
+  .dwrap { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; margin-top: 6px; }
+  .min-h { min-height: 200px; }
+
+  .dtab { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: clamp(12.5px, 1.2vw, 14.5px); }
+  .dtab th { text-align: left; color: var(--accent); font-size: .85em; letter-spacing: .06em; padding: 8px 10px;
+    border-bottom: 1px solid var(--line2); font-weight: 700; }
+  .dtab th.click { cursor: pointer; }
+  .dtab td { padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--ink); }
+  .dtab tr:last-child td { border-bottom: none; }
+  .dtab tr.off td { color: var(--dim); }
+  .dtab tr.ghost td { color: var(--dim); font-style: italic; }
+  .dtab td.bad-cell { color: var(--bad); font-weight: 700; }
+  .dtab tr.hl td { background: var(--accent-dim); }
+  .dtab td.hlc { color: var(--accent2); background: var(--accent-dim); }
+  .dempty { padding: 14px; color: var(--dim); font-family: var(--mono); font-size: 13px; text-align: center; }
+  .dimcell { color: var(--dim); font-style: italic; }
+
+  .demonote { margin-top: 10px; font-size: clamp(12.5px, 1.2vw, 14px); line-height: 1.55; color: var(--muted); min-height: 40px; }
+  .demonote b { color: var(--bad); }
+  .demonote b.ok { color: var(--ok); }
+
+  button { cursor: pointer; font-family: inherit; border: 1px solid var(--line2); background: var(--panel2); color: var(--ink);
+    padding: 9px 16px; border-radius: 10px; font-size: clamp(12.5px, 1.25vw, 14.5px); font-weight: 600; transition: .15s; }
+  button:hover { border-color: var(--accent); color: var(--accent2); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.primary:hover { background: var(--accent2); color: var(--accent-ink); }
+  button.ok { border-color: rgba(99, 185, 120, .5); color: var(--ok); }
+  button.bad { border-color: rgba(224, 118, 118, .5); color: var(--bad); }
+  button.small { padding: 6px 11px; font-size: 12.5px; border-radius: 8px; }
+  button.mini { padding: 2px 8px; font-size: 12px; border-radius: 7px; margin-right: 4px; }
+  button:disabled { opacity: .4; cursor: default; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+  .addrow { display: flex; gap: 8px; }
+  .addrow input { flex: 1; min-width: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--ink); padding: 9px 12px; font-size: 14px; outline: none; }
+  .addrow input:focus { border-color: var(--accent); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+  .chips .chip { font-family: var(--mono); font-size: 13px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line2); background: var(--panel2); color: var(--muted); }
+
+  .console { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; margin-top: 8px; overflow: hidden; }
+  .console-row { display: flex; gap: 8px; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+  .console-row .prompt { font-family: var(--mono); color: var(--accent); font-size: 14px; }
+  .console-row input { flex: 1; background: var(--panel3); border: 1px solid var(--line); border-radius: 8px; color: var(--ink);
+    font-family: var(--mono); font-size: 14px; padding: 7px 10px; outline: none; min-width: 0; }
+  .console-row input:focus { border-color: var(--accent); }
+  .console-result { padding: 4px 10px 10px; max-height: 252px; overflow-y: auto; }
+  .res-ok { color: var(--ok); font-family: var(--mono); font-size: 13px; padding: 6px 2px; }
+  .res-err { color: var(--bad); font-family: var(--mono); font-size: 13px; padding: 6px 2px; }
+  .res-empty { color: var(--dim); font-family: var(--mono); font-size: 13px; padding: 6px 2px; }
+
+  .sqllog { background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; margin-top: 6px; padding: 8px 12px;
+    height: 112px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+  .sqllog .lbl { color: var(--dim); }
+  .sqllog .cur { color: var(--accent2); }
+
+  .ppanel { display: flex; gap: 10px; margin-top: 8px; }
+  .pstat { flex: 1; background: var(--panel3); border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px; text-align: center; }
+  .pstat .v { font-family: var(--mono); font-size: clamp(17px, 1.8vw, 22px); font-weight: 700; color: var(--accent2); }
+  .pstat .l { font-size: 11px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-top: 3px; }
+  .skins { margin-top: 8px; font-size: 13px; color: var(--muted); text-align: center; }
+  .skins b { color: var(--accent2); }
+
+  .slots { display: grid; gap: 10px; margin-top: 6px; }
+  .slot { display: flex; align-items: baseline; gap: 12px; background: var(--panel3); border: 1px dashed var(--line2); border-radius: 12px;
+    padding: 11px 14px; opacity: .3; transition: .45s; }
+  .slot.fill { opacity: 1; border-style: solid; background: var(--panel2); }
+  .slot .plus { font-family: var(--mono); color: var(--dim); font-size: 15px; min-width: 14px; }
+  .slot .t { font-weight: 700; color: var(--accent2); font-size: clamp(14px, 1.5vw, 17px); white-space: nowrap; }
+  .slot .d { color: var(--muted); font-size: clamp(12px, 1.2vw, 13.5px); margin-left: auto; text-align: right; }
+  .formula { margin-top: 14px; font-family: var(--mono); font-size: clamp(13.5px, 1.5vw, 17px); color: var(--ink); text-align: center; opacity: 0; transition: .5s; }
+  .formula.show { opacity: 1; }
+  .formula b { color: var(--accent); }
+
+  .ftree { font-family: var(--mono); font-size: clamp(13px, 1.35vw, 15.5px); line-height: 2; background: var(--panel3);
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-top: 8px; }
+  .ftree .db { color: var(--accent2); font-weight: 700; }
+  .ftree .cm { color: var(--dim); }
+  .reveal { display: none; margin-top: 12px; }
+  .reveal.open { display: block; animation: in .35s ease; }
+
+  .hintline { margin-top: 8px; font-family: var(--mono); font-size: 12.5px; color: var(--dim); text-align: center; }
+  .cline { padding: 1px 5px; border-radius: 6px; }
+  .cline.colclick { cursor: pointer; }
+  .cline.colclick:hover, .cline.on { background: var(--accent-dim); }
+
+  .tabs { display: flex; gap: 8px; margin-top: 8px; }
+  .tab { flex: 1; text-align: center; padding: 8px 6px; border-radius: 10px 10px 0 0; border: 1px solid var(--line); border-bottom: none;
+    background: var(--panel3); color: var(--muted); font-weight: 600; font-size: clamp(12.5px, 1.2vw, 14px); cursor: pointer; }
+  .tab.on { background: var(--panel2); color: var(--accent2); border-color: var(--line2); }
+  .tabpane { border: 1px solid var(--line2); border-radius: 0 12px 12px 12px; padding: 12px; background: var(--panel2); }
+  .tabpane.hidden { display: none; }
+
+  .tasks { display: grid; gap: 8px; margin-top: 6px; }
+  .task { text-align: left; display: flex; gap: 10px; align-items: baseline; }
+  .task .no { font-family: var(--mono); color: var(--accent); font-weight: 700; font-size: 13px; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 880px; margin: 14px auto 0; text-align: left; }
+  .card { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line2); background: var(--panel2); }
+  .card .t { font-family: var(--mono); font-weight: 700; font-size: 13.5px; color: var(--accent); }
+  .card .d { font-size: 13.5px; margin-top: 6px; color: var(--muted); line-height: 1.55; }
+  .card .d b { color: var(--ink); }
+  .nextline { margin-top: 16px; color: var(--dim); font-size: 14.5px; }
+  .nextline b { color: var(--accent2); }
+  .sheetno { position: absolute; top: 14px; right: 18px; font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: .12em; }
+
+  footer { z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 10px 30px 14px; gap: 12px; }
+  .btns { display: flex; gap: 9px; }
+  #dots { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--line2); padding: 0; }
+  .dot.on { background: var(--accent); border-color: var(--accent); width: 26px; border-radius: 999px; }
+  .hint { color: var(--dim); font-size: 12.5px; font-family: var(--mono); }
+  @media (min-width: 861px) { .slide.active:not(.center) { grid-template-columns: .94fr 1.06fr; } }
+  @media (min-width: 1600px) { pre { font-size: 16.5px; } .note { font-size: 15px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="sheet">БД · 02</span><span>Сохранения игры</span></div>
+  <div id="counter">1 / 16</div>
+</header>
+<div id="progressWrap"><div id="progress"></div></div>
+
+<main>
+<div class="deck">
+
+  <!-- 1 · титул -->
+  <section class="slide center active">
+    <div class="sheetno">БД · 01 / 16</div>
+    <div>
+      <div class="kicker">Python · SQLite · Часть 2</div>
+      <h1>Сохранения игры — <span class="mark">тоже база данных</span></h1>
+      <p style="max-width:760px">Уровень 7, монеты, полный инвентарь. Выйди из игры и зайди — всё на месте. Кто это помнит? Сделаем сохранение сами и упрёмся ровно в те же проблемы — <strong>и в ту же технологию</strong>.</p>
+      <div class="chips">
+        <span class="chip">1 · память</span>
+        <span class="chip">2 · save.txt</span>
+        <span class="chip">3 · таблица</span>
+        <span class="chip">UPDATE</span>
+        <span class="chip">WHERE</span>
+        <span class="chip">commit и ?</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · попытка 1: память -->
+  <section class="slide">
+    <div class="sheetno">БД · 02 / 16</div>
+    <div>
+      <div class="kicker">Попытка 1 · память</div>
+      <h2>Прогресс в переменных живёт, <span class="mark-bad">пока живёт игра</span></h2>
+      <p>Уровень, монеты, скины — это просто переменные в памяти. Пока игра запущена, всё работает.</p>
+      <ul>
+        <li>Прокачай героя справа: <b>уровень</b>, <b>монеты</b>, <b>новый скин</b>.</li>
+        <li>Нажми <b>«выйти из игры»</b> — память освободилась.</li>
+        <li>Зайди снова — а игра уже <b>новая игра</b>: уровень 1, монет 0, скинов нет.</li>
+      </ul>
+      <div class="note bad"><b>Проблема:</b> прогресс прожил ровно одну сессию. Сохранение должно переживать выход из игры.</div>
+    </div>
+    <div>
+      <div class="dlabel">сессия игры</div>
+      <div class="ppanel">
+        <div class="pstat"><div class="v" id="t2lvl">7</div><div class="l">уровень</div></div>
+        <div class="pstat"><div class="v" id="t2coins">240</div><div class="l">монеты</div></div>
+        <div class="pstat"><div class="v" id="t2skins">2</div><div class="l">скины</div></div>
+      </div>
+      <div class="skins" id="t2skinlist">скины: <b>золотой</b>, <b>зимний</b></div>
+      <div class="btnrow">
+        <button id="t2lvlup" class="small">＋1 уровень</button>
+        <button id="t2gold" class="small">＋50 монет</button>
+        <button id="t2skin" class="small">скин «неоновый»</button>
+      </div>
+      <div class="btnrow">
+        <button id="t2exit" class="bad">✕ выйти из игры</button>
+        <button id="t2reset" class="small">↺ заново</button>
+      </div>
+      <div id="t2note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 3 · попытка 2: save.txt -->
+  <section class="slide">
+    <div class="sheetno">БД · 03 / 16</div>
+    <div>
+      <div class="kicker">Попытка 2 · текстовый файл</div>
+      <h2>save.txt не исчезает. <span class="mark">Но это история матча</span></h2>
+      <p>Пишем каждое событие в <code>save.txt</code>: файл переживёт любой перезапуск. Пощёлкаем кнопками и посмотрим, что накопится.</p>
+      <ul>
+        <li>Каждая строка — <b>событие</b>, а не состояние.</li>
+        <li><b>«Получил предмет: меч»</b> встречается дважды: это один предмет или два?</li>
+        <li>Чтобы узнать инвентарь «сейчас» — <b>перечитай всё и посчитай в голове</b>. Каждый раз.</li>
+      </ul>
+      <div class="note"><b>Вывод:</b> файл хранит историю матча. А в сохранении нужен счёт: уровень, монеты, рюкзак — <b>сейчас</b>.</div>
+    </div>
+    <div>
+      <div class="dlabel">save.txt</div>
+      <div class="term">
+        <div class="term-bar"><span class="tdot r"></span><span class="tdot y"></span><span class="tdot g"></span><span class="term-title" id="t3title">save.txt</span></div>
+        <div class="term-body" id="t3body"></div>
+      </div>
+      <div class="btnrow">
+        <button id="t3lvl" class="small">＋1 уровень</button>
+        <button id="t3get" class="small">＋ получил предмет</button>
+        <button id="t3sell" class="small bad">－ продал предмет</button>
+        <button id="t3quit" class="small">↻ выход из игры</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · попытка 3: таблица -->
+  <section class="slide">
+    <div class="sheetno">БД · 04 / 16</div>
+    <div>
+      <div class="kicker">Попытка 3 · таблица</div>
+      <h2>Складываем события <span class="mark">в состояние</span></h2>
+      <p>Таблицу вы видели сто раз — Excel, гугл-таблица, CSV. Сложим журнал в таблицу: не события, а то, что получилось в итоге.</p>
+      <ul>
+        <li>Две строки «получил меч» — это <b>одна строка</b> с <code>count = 2</code>.</li>
+        <li>Два «+1 уровень» — <b>одно число</b>: 9.</li>
+        <li>Состояние «сейчас» видно <b>сразу</b> — журнал перечитывать не нужно.</li>
+      </ul>
+      <div class="note ok"><b>Похоже на правду:</b> таблица — это и есть сохранение. Трещины — на следующем слайде.</div>
+    </div>
+    <div>
+      <div class="dlabel">из save.txt → в таблицу</div>
+      <div class="ppanel" id="t4player" style="opacity:.25">
+        <div class="pstat"><div class="v">9</div><div class="l">уровень</div></div>
+        <div class="pstat"><div class="v">240</div><div class="l">монеты</div></div>
+      </div>
+      <div class="dwrap"><div id="t4box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t4fold" class="primary">▾ сложить журнал в таблицу</button>
+        <button id="t4reset" class="small">↺</button>
+      </div>
+      <div id="t4note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 5 · трещины таблицы -->
+  <section class="slide">
+    <div class="sheetno">БД · 05 / 16</div>
+    <div>
+      <div class="kicker bad">Где таблица подводит</div>
+      <h2>Порядок есть. <span class="mark-bad">Правил — нет</span></h2>
+      <p>Таблицу заполняет игра. А игра — это руки программиста, который торопится и ошибается. Таблица молча принимает всё.</p>
+      <ul>
+        <li><b>«Очень редкая прям»</b> в колонке rarity — таблица приняла. Сравнить редкости потом не выйдет.</li>
+        <li><b>Предмет без имени</b> — строка есть, а предмета нет. Запретить пустое некому.</li>
+        <li><b>Меч в двух строках</b> — это один предмет или два? Дубликатов никто не ловит.</li>
+      </ul>
+      <div class="note"><b>Зерно:</b> правила должен соблюдать кто-то, кто не устаёт. Нужен файл, который следит за порядком <b>сам</b>.</div>
+    </div>
+    <div>
+      <div class="dlabel">таблица предметов — попробуй сломать</div>
+      <div class="dwrap"><div id="t5box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t5junk" class="small bad">вписать что попало</button>
+        <button id="t5empty" class="small bad">предмет без имени</button>
+        <button id="t5dup" class="small bad">продублировать меч</button>
+        <button id="t5reset" class="small">↺</button>
+      </div>
+      <div id="t5note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 6 · вывод -->
+  <section class="slide">
+    <div class="sheetno">БД · 06 / 16</div>
+    <div>
+      <div class="kicker ok">Что получилось</div>
+      <h2>Это и есть <span class="mark">база данных</span></h2>
+      <p>Соберём вывод из трёх попыток — по кусочку на каждую.</p>
+      <ul>
+        <li><b>Попытка 2</b> показала: сохранение должно жить в файле — дольше сессии.</li>
+        <li><b>Попытка 3</b> показала: хранить нужно состояние — строками и колонками.</li>
+        <li><b>Трещины таблицы</b> показали: правила должны проверяться сами — типы, уникальные номера, обязательные поля.</li>
+        <li>И нужен язык, чтобы просить: <b>«дай легендарные»</b> — не перечитывая всё глазами.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">формула</div>
+      <div class="slots">
+        <div class="slot"><span class="plus">+</span><span class="t">файл</span><span class="d">сохранение дольше сессии</span></div>
+        <div class="slot"><span class="plus">+</span><span class="t">структура</span><span class="d">предметы и свойства</span></div>
+        <div class="slot"><span class="plus">+</span><span class="t">правила</span><span class="d">типы · уникальный номер · нельзя пустое</span></div>
+        <div class="slot"><span class="plus">+</span><span class="t">язык запросов</span><span class="d">просить, а не выкапывать</span></div>
+      </div>
+      <div class="btnrow">
+        <button id="t6go" class="primary">▸ собрать по кусочку</button>
+        <button id="t6reset" class="small">↺</button>
+      </div>
+      <div id="t6formula" class="formula">файл + структура + правила + язык запросов = <b>база данных</b></div>
+      <div id="t6note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 7 · строка и колонка -->
+  <section class="slide">
+    <div class="sheetno">БД · 07 / 16</div>
+    <div>
+      <div class="kicker">Словарь</div>
+      <h2>Строка — запись. Колонка — свойство</h2>
+      <p>Кликните по строке и по названию колонки — таблица подскажет, что есть что.</p>
+      <ul>
+        <li><b>Строка</b> — одна запись целиком: один предмет со всеми свойствами.</li>
+        <li><b>Колонка</b> — одно свойство, одинаковое у всех строк.</li>
+        <li><b>Несколько таблиц</b> — в одной базе каждая про своё: <code>player</code> — про героя, <code>items</code> — про рюкзак.</li>
+        <li><b>id</b> — уникальный номер записи. База назначает его сама и больше не меняет.</li>
+      </ul>
+      <div class="note"><b>Зачем id:</b> строка №3 плавает при вставках и удалениях, а <code>id = 3</code> — нет. Именно его используют UPDATE и DELETE.</div>
+    </div>
+    <div>
+      <div class="dlabel">таблица player — состояние героя</div>
+      <div class="dwrap"><div id="t7player"></div></div>
+      <div class="dlabel" style="margin-top:10px">таблица items — рюкзак</div>
+      <div class="dwrap"><div id="t7box"></div></div>
+      <div id="t7label" class="hintline">— клик по строке или по названию колонки —</div>
+    </div>
+  </section>
+
+  <!-- 8 · SQLite -->
+  <section class="slide">
+    <div class="sheetno">БД · 08 / 16</div>
+    <div>
+      <div class="kicker ok">Готовое решение</div>
+      <h2>SQLite: <span class="mark">вся база — один файл</span></h2>
+      <p>Всё, что мы сформулировали, уже сделано за нас. <strong>SQLite</strong> — это база данных, которая живёт в одном файле рядом с программой.</p>
+      <ul>
+        <li>Вся база — <b>один файл</b> <code>saves.db</code>: скопировать, перенести, удалить.</li>
+        <li><b>Сервер не нужен:</b> база рядом с программой, как обычный файл.</li>
+        <li>Модуль <code>sqlite3</code> в Python <b>уже есть</b> — ничего ставить не нужно.</li>
+        <li>Такая база стоит <b>в каждом телефоне</b>: чаты, заметки, настройки — и в консолях, и в браузерах.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">проект</div>
+      <div class="ftree">
+        <div>game/</div>
+        <div>&nbsp;&nbsp;├─ game.py&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">← игра</span></div>
+        <div class="db">&nbsp;&nbsp;└─ saves.db&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">← вся база сохранений: один файл</span></div>
+      </div>
+      <div class="btnrow">
+        <button id="t8open" class="primary">▸ что внутри saves.db?</button>
+      </div>
+      <div id="t8reveal" class="reveal">
+        <div class="note"><b>Внутри — таблицы:</b> <code>player</code> (уровень, монеты) и <code>items</code> (рюкзак). Правила — типы, уникальные id, обязательные поля — файл проверяет сам.</div>
+        <div class="note ok"><b>Порядок работы:</b> открыл файл → попросил на SQL → получил ответ → закрыл.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · CREATE TABLE -->
+  <section class="slide">
+    <div class="sheetno">БД · 09 / 16</div>
+    <div>
+      <div class="kicker">Паспорт таблиц</div>
+      <h2>CREATE TABLE — <span class="mark">правила один раз</span></h2>
+      <p>Колонки и правила описываются один раз — дальше <strong>таблицы проверяют сами</strong>. Кликните по строке паспорта.</p>
+      <ul>
+        <li><b>Типы:</b> в колонке числа — только числа, текст — только текст.</li>
+        <li><b>PRIMARY KEY</b> — уникальный номер строки: повторить нельзя.</li>
+        <li><b>NOT NULL</b> — пустым оставлять нельзя.</li>
+        <li><b>IF NOT EXISTS</b> — повторный запуск скрипта не упадёт: таблицы уже есть.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">паспорт</div>
+      <div class="term">
+        <div class="term-bar"><span class="tdot r"></span><span class="tdot y"></span><span class="tdot g"></span><span class="term-title">schema.sql — паспорт таблиц сохранения</span></div>
+        <div class="term-body" id="t9code">
+          <div class="cline"><span class="k">CREATE TABLE</span> <span class="k2">IF NOT EXISTS</span> items (</div>
+          <div class="cline colclick" data-col="id">&nbsp;&nbsp;id&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">INTEGER</span> <span class="k">PRIMARY KEY</span>,</div>
+          <div class="cline colclick" data-col="name">&nbsp;&nbsp;name&nbsp;&nbsp;&nbsp;<span class="k">TEXT</span> <span class="k">NOT NULL</span>,</div>
+          <div class="cline colclick" data-col="rarity">&nbsp;&nbsp;rarity&nbsp;<span class="k">TEXT</span>,</div>
+          <div class="cline colclick" data-col="count">&nbsp;&nbsp;count&nbsp;&nbsp;<span class="k">INTEGER</span></div>
+          <div class="cline">);</div>
+          <div class="cline"><span class="k">CREATE TABLE</span> <span class="k2">IF NOT EXISTS</span> player (</div>
+          <div class="cline colclick" data-col="player">&nbsp;&nbsp;level&nbsp;&nbsp;<span class="k">INTEGER</span>,&nbsp;&nbsp;coins&nbsp;&nbsp;<span class="k">INTEGER</span></div>
+          <div class="cline">);</div>
+        </div>
+      </div>
+      <div id="t9hint" class="hintline">— клик по строке паспорта —</div>
+      <div id="t9expl" class="note" style="min-height:92px">Колонки — это договор: в каждой строке на этом месте лежит одно и то же свойство, и оно одного типа.</div>
+    </div>
+  </section>
+
+  <!-- 10 · INSERT -->
+  <section class="slide">
+    <div class="sheetno">БД · 10 / 16</div>
+    <div>
+      <div class="kicker">Python · дроп</div>
+      <h2>connect → execute → <span class="mark">commit</span></h2>
+      <p>С базой говорят тремя шагами: открыть файл, выполнить SQL, сохранить изменения в файле.</p>
+<pre><span class="p">import</span> sqlite3
+
+<span class="c"># открыть базу: файла нет — создастся</span>
+conn = sqlite3.<span class="f">connect</span>(<span class="s">'saves.db'</span>)
+
+conn.<span class="f">execute</span>(
+    <span class="s">"INSERT INTO items (name, rarity, count)"</span>
+    <span class="s">" VALUES (?, ?, ?)"</span>,
+    (<span class="s">"сундук"</span>, <span class="s">"редкий"</span>, <span class="n">1</span>),
+)
+conn.<span class="f">commit</span>()   <span class="c"># сохранить в файл</span>
+conn.<span class="f">close</span>()</pre>
+      <ul>
+        <li><code>?</code> — места подстановки: <b>данные идут отдельно</b> от текста запроса. Почему это важно — на слайде про инъекции.</li>
+        <li><code>commit()</code> — «нажать сохранить»: без него изменения <b>не попадут в файл</b>.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">таблица items</div>
+      <div class="dwrap"><div id="t10box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t10a" class="small">▸ дроп: меч (редкий)</button>
+        <button id="t10b" class="small">▸ дроп: зелье (обычное)</button>
+        <button id="t10c" class="small">▸ дроп: скин (легендарный)</button>
+      </div>
+      <div class="dlabel" style="margin-top:12px">что выполнилось</div>
+      <div class="sqllog" id="t10log"></div>
+    </div>
+  </section>
+
+  <!-- 11 · UPDATE -->
+  <section class="slide">
+    <div class="sheetno">БД · 11 / 16</div>
+    <div>
+      <div class="kicker">Python · прокачка</div>
+      <h2>UPDATE — <span class="mark">прогресс растёт</span></h2>
+      <p>Игрок что-то делает каждые десять секунд — и каждое действие меняет сохранение. Каждое изменение — это <strong>один UPDATE</strong>.</p>
+<pre>conn.<span class="f">execute</span>(<span class="s">"UPDATE player SET level = level + 1"</span>)
+
+conn.<span class="f">execute</span>(
+    <span class="s">"UPDATE items SET count = count + 1"</span>
+    <span class="s">" WHERE name = ?"</span>,
+    (<span class="s">"меч"</span>,),
+)
+conn.<span class="f">commit</span>()</pre>
+      <ul>
+        <li><code>SET level = level + 1</code> — «стало на один больше»: <b>база сама посчитает</b>.</li>
+        <li><b>WHERE</b> — «кому именно»: апгрейдится один предмет, а не весь рюкзак.</li>
+      </ul>
+      <div class="note"><b>Прогресс</b> — это много UPDATE поверх состояния. Сохранение всегда говорит «сейчас».</div>
+    </div>
+    <div>
+      <div class="dlabel">состояние героя и рюкзак</div>
+      <div class="ppanel" id="t11ppanel"></div>
+      <div class="dwrap"><div id="t11box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t11lvl" class="small">▸ +1 уровень</button>
+        <button id="t11sword" class="small">▸ получил ещё один меч</button>
+      </div>
+      <div class="dlabel" style="margin-top:10px">что выполнилось</div>
+      <div class="sqllog" id="t11log"></div>
+    </div>
+  </section>
+
+  <!-- 12 · WHERE -->
+  <section class="slide">
+    <div class="sheetno">БД · 12 / 16</div>
+    <div>
+      <div class="kicker bad">Кому именно</div>
+      <h2>Без <span class="mark-bad">WHERE</span> — честно выполнит для всех</h2>
+      <p>UPDATE и DELETE сами не догадываются, кого вы имели в виду. Нет WHERE — <strong>все строки</strong>.</p>
+<pre><span class="c">-- ⚠ без WHERE: выполнит для всех строк</span>
+<span class="k">UPDATE</span> items <span class="k">SET</span> count = <span class="n">0</span>;
+<span class="k">DELETE</span> <span class="k">FROM</span> items;
+
+<span class="c">-- правильно: по номеру записи</span>
+<span class="k">DELETE</span> <span class="k">FROM</span> items <span class="k">WHERE</span> id = <span class="n">3</span>;</pre>
+      <ul>
+        <li><b>WHERE — «кому именно»:</b> апгрейд одного предмета, продажа одного предмета.</li>
+        <li>Продать «щит» — это <code>DELETE … WHERE id = 3</code>: <b>номер записи</b>, а не строка в таблице.</li>
+      </ul>
+      <div class="note bad"><b>Одно нажатие без WHERE</b> — и инвентарь пуст. База не предупредит: команда честная.</div>
+    </div>
+    <div>
+      <div class="dlabel">таблица items — попробуй без WHERE</div>
+      <div class="dwrap"><div id="t12box" class="min-h"></div></div>
+      <div class="btnrow">
+        <button id="t12upd" class="small bad">❌ UPDATE без WHERE</button>
+        <button id="t12del" class="small bad">❌ DELETE без WHERE</button>
+        <button id="t12sell" class="small ok">✅ продать щит</button>
+        <button id="t12reset" class="small">↺ восстановить</button>
+      </div>
+      <div id="t12note" class="demonote"></div>
+    </div>
+  </section>
+
+  <!-- 13 · SELECT -->
+  <section class="slide">
+    <div class="sheetno">БД · 13 / 16</div>
+    <div>
+      <div class="kicker">Python · спросить</div>
+      <h2>SELECT — скажи, <span class="mark">что</span> нужно</h2>
+      <p>В Python вы описываете <strong>как</strong> искать: цикл и проверки. В SQL вы просто говорите, <strong>что</strong> вам нужно:</p>
+      <div class="tworow">
+<pre><span class="c"># питон: КАК</span>
+rare = []
+<span class="p">for</span> it <span class="p">in</span> items:
+    <span class="p">if</span> it[<span class="s">'rarity'</span>] == <span class="s">'легендарный'</span>:
+        rare.<span class="f">append</span>(it)</pre>
+<pre><span class="c">-- SQL: ЧТО</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> items
+<span class="k">WHERE</span> rarity = <span class="s">'легендарный'</span>;</pre>
+      </div>
+      <ul>
+        <li><code>fetchall()</code> — все строки; <code>fetchone()</code> — первая (или <code>None</code>); <code>fetchmany(3)</code> — не больше трёх.</li>
+        <li><code>WHERE</code> работает и с текстом, и с числами: <code>rarity = ?</code>, <code>count &gt; 1</code>.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="dlabel">спроси базу — и получишь ответ</div>
+      <div class="console">
+        <div class="console-row"><span class="prompt">sql&gt;</span><input id="t13q" spellcheck="false" value="SELECT * FROM items"><button id="t13run" class="primary small">▶</button></div>
+        <div class="console-chips">
+          <button class="cchip" data-q="SELECT * FROM items">весь рюкзак</button>
+          <button class="cchip" data-q="SELECT * FROM items WHERE rarity = 'легендарный'">легендарные</button>
+          <button class="cchip" data-q="SELECT name, count FROM items WHERE count > 1">чего больше одного</button>
+          <button class="cchip" data-q="SELECT * FROM player">состояние героя</button>
+        </div>
+        <div class="console-result" id="t13res"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14 · ловушки -->
+  <section class="slide">
+    <div class="sheetno">БД · 14 / 16</div>
+    <div>
+      <div class="kicker bad">Две ловушки</div>
+      <h2><span class="mark-bad">commit</span> и SQL-инъекция</h2>
+      <div class="note bad" style="margin-top:4px"><b>Забыли commit():</b> изменения живут в памяти соединения. Закрыли игру — прогресс откатился. INSERT / UPDATE / DELETE — и следом <code>commit()</code>.</div>
+      <div class="note bad"><b>Склеили строку с запросом:</b> данные стали частью команды. Тролль из чата вписал в ник <code>'); DELETE FROM items;--</code> — рюкзак опустел.</div>
+      <pre>conn.<span class="f">execute</span>(<span class="s">"INSERT INTO items (name, rarity, count)"</span>
+             <span class="s">" VALUES (?, ?, ?)"</span>, (<span class="s">"скин"</span>, <span class="s">"легендарный"</span>, <span class="n">1</span>))
+
+conn.<span class="f">commit</span>()   <span class="c"># ← без этой строки скин исчезнет</span></pre>
+      <div class="note ok"><b>Решение — ?:</b> данные идут отдельным параметром. База знает: это значение, а не команда. Любой текст просто ляжет в колонку name.</div>
+    </div>
+    <div>
+      <div class="tabs">
+        <button class="tab on" data-pane="t14commit">ловушка 1 · commit</button>
+        <button class="tab" data-pane="t14inject">ловушка 2 · инъекция</button>
+      </div>
+      <div class="tabpane" id="t14commit">
+        <div class="dlabel">таблица items</div>
+        <div class="dwrap"><div id="t14box" style="min-height:172px"></div></div>
+        <div class="btnrow">
+          <button id="t14ins" class="small">▸ INSERT «скин»</button>
+          <button id="t14cm" class="small ok">commit: вкл</button>
+          <button id="t14cl" class="small bad">✕ close()</button>
+          <button id="t14reset" class="small">↺</button>
+        </div>
+        <div id="t14note" class="demonote" style="min-height:52px"></div>
+      </div>
+      <div class="tabpane hidden" id="t14inject">
+        <div class="dlabel">ник из чата</div>
+        <div class="addrow"><input id="t14input" readonly value="скин'); DELETE FROM items;--"></div>
+        <div class="btnrow">
+          <button id="t14bad" class="small bad">❌ склеить строки</button>
+          <button id="t14good" class="small ok">✅ передать через ?</button>
+          <button id="t14reset2" class="small">↺</button>
+        </div>
+        <div class="dwrap"><div id="t14box2" style="min-height:172px"></div></div>
+        <div id="t14note2" class="demonote" style="min-height:52px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 15 · песочница -->
+  <section class="slide">
+    <div class="sheetno">БД · 15 / 16</div>
+    <div>
+      <div class="kicker">Песочница</div>
+      <h2>Живая база: <span class="mark">полный SQL</span></h2>
+      <p>База <code>saves.db</code>: обе таблицы, SELECT и все изменения. Выполняй задания или пиши свои запросы.</p>
+      <div class="tasks">
+        <button class="task" data-q="SELECT * FROM items"><span class="no">1 ·</span> Покажи рюкзак</button>
+        <button class="task" data-q="SELECT * FROM items WHERE rarity = 'легендарный'"><span class="no">2 ·</span> Легендарные предметы</button>
+        <button class="task" data-q="SELECT name, count FROM items WHERE count > 1"><span class="no">3 ·</span> Чего больше одного</button>
+        <button class="task" data-q="INSERT INTO items (name, rarity, count) VALUES ('эликсир', 'редкий', 2)"><span class="no">4 ·</span> Дропни предмет (INSERT)</button>
+        <button class="task" data-q="UPDATE items SET count = count + 1 WHERE name = 'меч'"><span class="no">5 ·</span> Прокачай меч (UPDATE)</button>
+        <button class="task" data-q="DELETE FROM items WHERE id = 3"><span class="no">6 ·</span> Продай щит (DELETE)</button>
+      </div>
+      <div class="btnrow">
+        <button id="t15reset" class="small">♻ сбросить базу</button>
+      </div>
+    </div>
+    <div>
+      <div class="console">
+        <div class="console-row"><span class="prompt">sql&gt;</span><input id="t15q" spellcheck="false" value="SELECT * FROM items"><button id="t15run" class="primary small">▶</button></div>
+        <div class="console-result" id="t15res"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 16 · итог -->
+  <section class="slide center">
+    <div class="sheetno">БД · 16 / 16</div>
+    <div>
+      <div class="kicker ok">Запомнить</div>
+      <h2>Сохранение — это <span class="mark">таблица в файле</span></h2>
+      <div class="cards">
+        <div class="card"><div class="t">1 · состояние, не история</div><div class="d">Таблица хранит «сейчас»: уровень, монеты, рюкзак. Файл-журнал — это переписанный кусок истории.</div></div>
+        <div class="card"><div class="t">2 · UPDATE и DELETE</div><div class="d">Меняют и удаляют строки — почти всегда с <code>WHERE id</code>. Без WHERE — всем строкам сразу.</div></div>
+        <div class="card"><div class="t">3 · commit()</div><div class="d">«Нажать сохранить». Без него прогресс откатится при закрытии соединения.</div></div>
+        <div class="card"><div class="t">4 · ?</div><div class="d">Данные отдельно от запроса: тролли в чате бессильны.</div></div>
+      </div>
+      <div class="note" style="max-width:860px; margin-top:16px"><b>Так устроены сохранения в играх</b> — и не только: заметки, чаты, банковские приложения. Везде, где данные должны пережить перезапуск.</div>
+      <div class="nextline">Часть 1: <b>список дел</b> — <code>databases-part1.html</code></div>
+    </div>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="btns">
+    <button id="prev">← Назад</button>
+    <button id="next" class="primary">Далее →</button>
+  </div>
+  <div id="dots"></div>
+  <div class="hint">стрелки ← → / пробел</div>
+</footer>
+
+<script>
+/* ── каркас навигации ── */
+let i = 0;
+const slides = [...document.querySelectorAll('.slide')];
+const dotsBox = document.getElementById('dots');
+const counter = document.getElementById('counter');
+const progress = document.getElementById('progress');
+slides.forEach((_, n) => {
+  const d = document.createElement('button');
+  d.className = 'dot' + (n === 0 ? ' on' : '');
+  d.setAttribute('aria-label', 'слайд ' + (n + 1));
+  d.onclick = () => go(n);
+  dotsBox.appendChild(d);
+});
+const dots = [...dotsBox.children];
+function go(n) {
+  i = (n + slides.length) % slides.length;
+  slides.forEach((s, k) => s.classList.toggle('active', k === i));
+  dots.forEach((d, k) => d.classList.toggle('on', k === i));
+  counter.textContent = (i + 1) + ' / ' + slides.length;
+  progress.style.width = ((i + 1) / slides.length * 100) + '%';
+  slides[i].scrollTop = 0;
+  try { history.replaceState(null, '', '#' + (i + 1)); } catch (e) { /* file:// не даёт менять историю */ }
+}
+window.addEventListener('hashchange', () => {
+  const n = parseInt(location.hash.slice(1), 10);
+  if (!isNaN(n)) go(n - 1);
+});
+document.getElementById('next').onclick = () => go(i + 1);
+document.getElementById('prev').onclick = () => go(i - 1);
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(i + 1); }
+  if (e.key === 'ArrowLeft') go(i - 1);
+});
+let x0 = null;
+window.addEventListener('touchstart', e => x0 = e.touches[0].clientX, { passive: true });
+window.addEventListener('touchend', e => {
+  if (x0 === null) return;
+  const dx = e.changedTouches[0].clientX - x0;
+  if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
+  x0 = null;
+}, { passive: true });
+function fit() {
+  const deck = document.querySelector('.deck');
+  if (!deck) return;
+  deck.style.zoom = '';
+  slides.forEach(s => { s.style.maxHeight = ''; });
+  if (window.innerWidth <= 860) return;
+  const avail = window.innerHeight - 169;
+  let max = 0; const cur = i;
+  slides.forEach(s => { s.classList.add('active'); if (s.scrollHeight > max) max = s.scrollHeight; });
+  go(cur);
+  let z = avail / max;
+  if (z > 1) z = 1;
+  if (z < 0.55) z = 0.55;
+  if (z < 1) {
+    deck.style.zoom = z;
+    slides.forEach(s => { s.style.maxHeight = 'none'; });
+  }
+}
+const startSlide = parseInt(location.hash.slice(1), 10);
+go(isNaN(startSlide) ? 0 : startSlide - 1);
+fit();
+window.addEventListener('resize', fit);
+window.addEventListener('load', fit);
+
+/* ── утилиты ── */
+const escMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = s => String(s).replace(/[&<>"']/g, c => escMap[c]);
+const byId = id => document.getElementById(id);
+function logSql(box, html) {
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  box.appendChild(d);
+  while (box.children.length > 40) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+const lit = v => typeof v === 'number' ? String(v) : "'" + String(v).replace(/'/g, "''") + "'";
+
+/* ── мини-SQL: SELECT / INSERT / UPDATE / DELETE на зашитых таблицах ── */
+function seedDb(tables) { return JSON.parse(JSON.stringify(tables)); }
+function splitTop(s) {
+  const out = []; let cur = '', q = null;
+  for (const ch of s) {
+    if (q) { cur += ch; if (ch === q) q = null; continue; }
+    if (ch === "'" || ch === '"') { q = ch; cur += ch; continue; }
+    if (ch === ',') { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  if (cur.trim() !== '') out.push(cur.trim());
+  return out;
+}
+function unq(tok) {
+  tok = tok.trim();
+  let m = tok.match(/^'(.*)'$/); if (m) return { str: m[1].replace(/''/g, "'") };
+  m = tok.match(/^"(.*)"$/); if (m) return { str: m[1].replace(/""/g, '"') };
+  if (/^-?\d+$/.test(tok)) return { num: parseInt(tok, 10) };
+  return null;
+}
+function parseWhere(w) {
+  const m = w.match(/^(\w+)\s*(=|>|<)\s*(.+)$/);
+  if (!m) return null;
+  const v = unq(m[3]);
+  if (!v) return null;
+  return { col: m[1], op: m[2], val: v };
+}
+function whereMatch(row, w) {
+  const a = row[w.col];
+  if (w.op === '=') {
+    if (w.val.num !== undefined) return Number(a) === w.val.num;
+    return String(a).toLowerCase() === String(w.val.str).toLowerCase();
+  }
+  const an = typeof a === 'number' ? a : parseFloat(a);
+  if (w.val.num === undefined || isNaN(an)) return false;
+  return w.op === '>' ? an > w.val.num : an < w.val.num;
+}
+function runSql(db, sqlIn) {
+  const sql = sqlIn.trim().replace(/;+\s*$/, '');
+  let m;
+  m = /^select\s+(.+?)\s+from\s+(\w+)(?:\s+where\s+(.+))?$/i.exec(sql);
+  if (m) {
+    const t = db[m[2].toLowerCase()];
+    if (!t) return { err: 'нет таблицы ' + m[2] };
+    let cols;
+    if (m[1].trim() === '*') cols = t.cols.slice();
+    else {
+      cols = splitTop(m[1]);
+      for (const c of cols) if (!t.cols.includes(c)) return { err: 'нет колонки ' + c };
+    }
+    let rows = t.rows;
+    if (m[3]) {
+      const w = parseWhere(m[3]);
+      if (!w || !t.cols.includes(w.col)) return { err: 'не понял WHERE: жду «колонка = значение»' };
+      rows = rows.filter(r => whereMatch(r, w));
+    }
+    return { type: 'select', cols, rows };
+  }
+  m = /^insert\s+into\s+(\w+)\s*\(([^)]*)\)\s*values\s*\((.*)\)$/i.exec(sql);
+  if (m) {
+    const t = db[m[1].toLowerCase()];
+    if (!t) return { err: 'нет таблицы ' + m[1] };
+    const cols = splitTop(m[2]), vals = splitTop(m[3]);
+    if (cols.length !== vals.length) return { err: 'колонок (' + cols.length + ') и значений (' + vals.length + ') — не поровну' };
+    const row = {};
+    for (let k = 0; k < cols.length; k++) {
+      const c = cols[k];
+      if (!t.cols.includes(c)) return { err: 'нет колонки ' + c };
+      if (c.toLowerCase() === 'id') return { err: 'id назначает база сама — не указывай его' };
+      const v = unq(vals[k]);
+      if (!v) return { err: 'не понял значение ' + vals[k] + ' — текст бери в кавычки' };
+      row[c] = v.num !== undefined ? v.num : v.str;
+    }
+    for (const c of t.cols) {
+      if (t.notnull.includes(c) && (row[c] === undefined || row[c] === '')) return { err: c + ': NOT NULL — пусто нельзя' };
+      if (row[c] !== undefined && t.nums.includes(c) && typeof row[c] === 'string' && /^-?\d+$/.test(row[c].trim())) row[c] = parseInt(row[c], 10);
+    }
+    for (const c of t.cols) if (row[c] === undefined) row[c] = '';
+    row.id = ++t.seq;
+    t.rows.push(row);
+    return { type: 'write', table: m[1].toLowerCase(), n: 1 };
+  }
+  m = /^update\s+(\w+)\s+set\s+(.+?)(?:\s+where\s+(.+))?$/i.exec(sql);
+  if (m) {
+    const t = db[m[1].toLowerCase()];
+    if (!t) return { err: 'нет таблицы ' + m[1] };
+    const sets = [];
+    for (const a of splitTop(m[2])) {
+      const am = a.match(/^(\w+)\s*=\s*(.+)$/);
+      if (!am) return { err: 'не понял SET: жду «колонка = значение»' };
+      const col = am[1];
+      if (!t.cols.includes(col)) return { err: 'нет колонки ' + col };
+      const st = { col };
+      const inc = am[2].match(/^(\w+)\s*\+\s*(\d+)$/);
+      if (inc) {
+        if (inc[1].toLowerCase() !== col.toLowerCase()) return { err: 'прибавлять можно только к той же колонке' };
+        st.inc = parseInt(inc[2], 10);
+      } else {
+        const v = unq(am[2]);
+        if (!v) return { err: 'не понял значение ' + am[2] };
+        st.val = v.num !== undefined ? v.num : v.str;
+      }
+      sets.push(st);
+    }
+    let rows = t.rows;
+    if (m[3]) {
+      const w = parseWhere(m[3]);
+      if (!w || !t.cols.includes(w.col)) return { err: 'не понял WHERE' };
+      rows = rows.filter(r => whereMatch(r, w));
+    }
+    for (const r of rows) for (const st of sets) {
+      if (st.inc !== undefined) r[st.col] = (typeof r[st.col] === 'number' ? r[st.col] : (parseInt(r[st.col], 10) || 0)) + st.inc;
+      else r[st.col] = st.val;
+    }
+    return { type: 'write', table: m[1].toLowerCase(), n: rows.length, whereless: !m[3] };
+  }
+  m = /^delete\s+from\s+(\w+)(?:\s+where\s+(.+))?$/i.exec(sql);
+  if (m) {
+    const t = db[m[1].toLowerCase()];
+    if (!t) return { err: 'нет таблицы ' + m[1] };
+    let rows = t.rows;
+    if (m[2]) {
+      const w = parseWhere(m[2]);
+      if (!w || !t.cols.includes(w.col)) return { err: 'не понял WHERE' };
+      rows = rows.filter(r => whereMatch(r, w));
+    }
+    const ids = rows.map(r => r.id);
+    t.rows = t.rows.filter(r => !ids.includes(r.id));
+    return { type: 'write', table: m[1].toLowerCase(), n: ids.length, whereless: !m[2] };
+  }
+  return { err: 'демо понимает только SELECT, INSERT, UPDATE и DELETE' };
+}
+function resultHtml(res) {
+  if (res.err) return '<div class="res-err">✗ ' + esc(res.err) + '</div>';
+  if (res.type === 'write') return '<div class="res-ok">✓ готово · затронуто строк: ' + res.n + '</div>';
+  if (!res.rows.length) return '<div class="res-empty">— ни одной строки —</div>';
+  let h = '<table class="dtab"><thead><tr>' + res.cols.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>';
+  for (const r of res.rows) {
+    h += '<tr>' + res.cols.map(c => {
+      const v = r[c];
+      return '<td>' + (v === '' ? '<span class="dimcell">—</span>' : esc(v)) + '</td>';
+    }).join('') + '</tr>';
+  }
+  return h + '</tbody></table>';
+}
+function tblHtml(t, fmt) {
+  fmt = fmt || {};
+  const cell = fmt.cell || ((c, v) => v === '' ? '<span class="dimcell">—</span>' : esc(v));
+  const row = fmt.row || (() => '');
+  let h = '<table class="dtab"><thead><tr>' +
+    t.cols.map(c => '<th' + (fmt.clickCols ? ' class="click" data-col="' + c + '"' : '') + '>' + esc(c) + '</th>').join('') +
+    '</tr></thead><tbody>';
+  if (!t.rows.length) h += '<tr><td class="dempty" colspan="' + t.cols.length + '">— ни одной строки —</td></tr>';
+  for (const r of t.rows) {
+    h += '<tr class="' + row(r) + '">' + t.cols.map(c => '<td>' + cell(c, r[c], r) + '</td>').join('') + '</tr>';
+  }
+  return h + '</tbody></table>';
+}
+const itemsSeed = {
+  items: {
+    cols: ['id', 'name', 'rarity', 'count'],
+    nums: ['id', 'count'],
+    notnull: ['name'],
+    seq: 4,
+    rows: [
+      { id: 1, name: 'меч', rarity: 'редкий', count: 1 },
+      { id: 2, name: 'зелье', rarity: 'обычный', count: 3 },
+      { id: 3, name: 'щит', rarity: 'обычный', count: 1 },
+      { id: 4, name: 'скин «золотой»', rarity: 'легендарный', count: 1 }
+    ]
+  },
+  player: {
+    cols: ['level', 'coins'],
+    nums: ['level', 'coins'],
+    notnull: [],
+    seq: 1,
+    rows: [{ id: 1, level: 7, coins: 240 }]
+  }
+};
+
+/* ── слайд 2 · память ── */
+(function () {
+  const lvl = byId('t2lvl'), coins = byId('t2coins'), skins = byId('t2skins'), skinlist = byId('t2skinlist');
+  const note = byId('t2note');
+  const seed = { lvl: 7, coins: 240, skins: ['золотой', 'зимний'] };
+  let st;
+  function render() {
+    lvl.textContent = st.lvl;
+    coins.textContent = st.coins;
+    skins.textContent = st.skins.length;
+    skinlist.innerHTML = st.skins.length ? 'скины: <b>' + st.skins.map(esc).join('</b>, <b>') + '</b>' : '<span style="color:var(--dim)">скинов нет</span>';
+  }
+  byId('t2lvlup').onclick = () => { if (st) { st.lvl++; render(); } };
+  byId('t2gold').onclick = () => { if (st) { st.coins += 50; render(); } };
+  byId('t2skin').onclick = () => { if (st) { st.skins.push('неоновый'); render(); } };
+  byId('t2exit').onclick = () => {
+    st = null;
+    lvl.textContent = '1'; coins.textContent = '0'; skins.textContent = '0';
+    skinlist.innerHTML = '<span style="color:var(--dim)">скинов нет</span>';
+    note.innerHTML = '<b>Новая игра.</b> Прогресс был только в переменных: игра закрылась — память освободилась.';
+  };
+  byId('t2reset').onclick = () => { st = { ...seed, skins: seed.skins.slice() }; note.innerHTML = ''; render(); };
+  st = { ...seed, skins: seed.skins.slice() };
+  render();
+})();
+
+/* ── слайд 3 · save.txt ── */
+(function () {
+  const body = byId('t3body'), title = byId('t3title');
+  let lines = [
+    { cls: 't-comment', text: '# суббота, вечер' },
+    { cls: 't-add', text: '+1 уровень' },
+    { cls: 't-add', text: 'получил предмет: меч (редкий)' },
+    { cls: 't-add', text: 'получил предмет: зелье (обычное)' },
+    { cls: 't-comment', text: '# воскресенье' },
+    { cls: 't-add', text: '+1 уровень' },
+    { cls: 't-add', text: 'получил предмет: меч (редкий)' }
+  ];
+  const presets = {
+    lvl: ['+1 уровень'],
+    get: ['получил предмет: зелье (обычное)', 'получил предмет: свиток (редкий)'],
+    sell: ['продал предмет: зелье', 'продал предмет: свиток'],
+    quit: ['# выход из игры — читаем save.txt заново']
+  };
+  let gi = 0, si = 0;
+  function render() {
+    title.textContent = 'save.txt — ' + lines.length + ' строк';
+    body.innerHTML = lines.map(l => '<div class="' + l.cls + '">' + esc(l.text) + '</div>').join('');
+    body.scrollTop = body.scrollHeight;
+  }
+  byId('t3lvl').onclick = () => { lines.push({ cls: 't-add', text: presets.lvl[0] }); render(); };
+  byId('t3get').onclick = () => { lines.push({ cls: 't-add', text: presets.get[gi++ % presets.get.length] }); render(); };
+  byId('t3sell').onclick = () => { lines.push({ cls: 't-bad', text: presets.sell[si++ % presets.sell.length] }); render(); };
+  byId('t3quit').onclick = () => { lines.push({ cls: 't-comment', text: presets.quit[0] }); render(); };
+  render();
+})();
+
+/* ── слайд 4 · таблица из журнала ── */
+(function () {
+  const box = byId('t4box'), player = byId('t4player'), note = byId('t4note'), fold = byId('t4fold');
+  const rows = [
+    { name: 'меч', rarity: 'редкий', count: 2 },
+    { name: 'зелье', rarity: 'обычный', count: 1 }
+  ];
+  let timer = null;
+  function reset() {
+    if (timer) { clearInterval(timer); timer = null; }
+    fold.disabled = false;
+    note.innerHTML = '';
+    box.innerHTML = '<div class="dempty" style="min-height:200px;display:grid;place-items:center">— в save.txt 7 строк —</div>';
+    player.style.opacity = .25;
+  }
+  function showPlayer() { player.style.opacity = 1; }
+  fold.onclick = () => {
+    if (timer) return;
+    let step = 0;
+    timer = setInterval(() => {
+      step++;
+      if (step <= rows.length) {
+        box.innerHTML = tblHtml({ cols: ['id', 'name', 'rarity', 'count'], rows: rows.slice(0, step).map((r, k) => ({ id: k + 1, name: r.name, rarity: r.rarity, count: r.count })) });
+      } else {
+        showPlayer();
+        clearInterval(timer); timer = null;
+        fold.disabled = true;
+        note.innerHTML = '<b class="ok">Две строки «получил меч» — одна строка с count = 2.</b> Это состояние «сейчас», а не история.';
+      }
+    }, 450);
+  };
+  byId('t4reset').onclick = reset;
+  reset();
+})();
+
+/* ── слайд 5 · трещины таблицы ── */
+(function () {
+  const box = byId('t5box'), note = byId('t5note');
+  let db;
+  function render() { box.innerHTML = tblHtml(db.items); }
+  byId('t5junk').onclick = () => {
+    db.items.rows.push({ id: ++db.items.seq, name: 'сундук', rarity: 'очень редкая прям', count: 1 });
+    note.innerHTML = '<b>Колонка rarity приняла что угодно</b> — правил на значения нет. Сравнить редкости потом не выйдет.';
+    render();
+  };
+  byId('t5empty').onclick = () => {
+    db.items.rows.push({ id: ++db.items.seq, name: '', rarity: 'обычный', count: 1 });
+    note.innerHTML = '<b>Предмет без имени</b> — таблица молчит: запретить пустое некому.';
+    render();
+  };
+  byId('t5dup').onclick = () => {
+    db.items.rows.push({ id: ++db.items.seq, name: 'меч', rarity: 'редкий', count: 1 });
+    note.innerHTML = '<b>Меч теперь в двух строках</b> — это один предмет или два? Дубликатов никто не ловит.';
+    render();
+  };
+  byId('t5reset').onclick = () => { db = seedDb(itemsSeed); note.innerHTML = ''; render(); };
+  db = seedDb(itemsSeed); render();
+})();
+
+/* ── слайд 6 · формула ── */
+(function () {
+  const slots = [...document.querySelectorAll('.slots .slot')];
+  const formula = byId('t6formula'), note = byId('t6note'), btn = byId('t6go');
+  let step = 0;
+  function render() {
+    slots.forEach((s, k) => s.classList.toggle('fill', k < step));
+    formula.classList.toggle('show', step >= slots.length);
+    btn.disabled = step >= slots.length;
+    note.innerHTML = step >= slots.length ? '<b class="ok">Такая штука уже есть готовая</b> — называется SQLite. И она уже стоит в каждом телефоне.' : '';
+  }
+  btn.onclick = () => { if (step < slots.length) { step++; render(); } };
+  byId('t6reset').onclick = () => { step = 0; render(); };
+  render();
+})();
+
+/* ── слайд 7 · строка и колонка ── */
+(function () {
+  const box = byId('t7box'), pbox = byId('t7player'), label = byId('t7label');
+  const db = seedDb(itemsSeed);
+  const texts = {
+    id: 'id — уникальный номер записи: назначается базой и не меняется.',
+    name: 'name — свойство «название предмета»: у каждой строки своё.',
+    rarity: 'rarity — свойство «редкость»: одинаковое место у всех строк.',
+    count: 'count — свойство «сколько штук»: только числа.'
+  };
+  function render(hlRow, hlCol) {
+    pbox.innerHTML = tblHtml(db.player);
+    box.innerHTML = tblHtml(db.items, {
+      clickCols: true,
+      row: r => (r.id === hlRow ? 'hl' : ''),
+      cell: (c, v, r) => (c === hlCol ? '<span class="hlc">' + esc(v) + '</span>' : esc(v))
+    });
+    box.querySelectorAll('tbody tr').forEach((tr, k) => {
+      tr.onclick = () => {
+        const r = db.items.rows[k];
+        label.textContent = 'Строка — одна запись: предмет «' + r.name + '» целиком, со всеми свойствами.';
+        render(r.id, null);
+      };
+    });
+    box.querySelectorAll('th').forEach(th => {
+      th.onclick = () => {
+        const c = th.dataset.col;
+        label.textContent = texts[c];
+        render(null, c);
+      };
+    });
+  }
+  render(null, null);
+})();
+
+/* ── слайд 8 · SQLite ── */
+byId('t8open').onclick = () => byId('t8reveal').classList.add('open');
+
+/* ── слайд 9 · паспорт ── */
+(function () {
+  const hint = byId('t9hint'), expl = byId('t9expl');
+  const texts = {
+    id: '<b>id · INTEGER PRIMARY KEY</b> — уникальный номер предмета. База назначает его сама и не даст вставить второй раз. По нему продают и прокачивают.',
+    name: '<b>name · TEXT NOT NULL</b> — текст и обязательно заполнен. Предмет без имени база не сохранит.',
+    rarity: '<b>rarity · TEXT</b> — текст, можно не заполнять. Правило «только обычный/редкий/легендарный» — тема посложнее, здесь просто текст.',
+    count: '<b>count · INTEGER</b> — сколько штук: в колонке только числа.',
+    player: '<b>player</b> — не предметы, а состояние героя: уровень и монеты. В нашем сохранении она из одной строки.'
+  };
+  const lines = [...document.querySelectorAll('#t9code .colclick')];
+  lines.forEach(l => {
+    l.onclick = () => {
+      lines.forEach(x => x.classList.remove('on'));
+      l.classList.add('on');
+      hint.textContent = '— ' + l.dataset.col + ' —';
+      expl.innerHTML = texts[l.dataset.col];
+    };
+  });
+})();
+
+/* ── слайд 10 · INSERT ── */
+(function () {
+  const db = seedDb(itemsSeed);
+  const box = byId('t10box'), log = byId('t10log');
+  function render() { box.innerHTML = tblHtml(db.items); }
+  function insert(name, rarity) {
+    logSql(log, '<span class="cur">' + esc("INSERT INTO items (name, rarity, count) VALUES (" + lit(name) + ", " + lit(rarity) + ", 1)") + '</span>');
+    logSql(log, '<span class="lbl">conn.commit()</span>');
+    runSql(db, "INSERT INTO items (name, rarity, count) VALUES (" + lit(name) + ", " + lit(rarity) + ", 1)");
+    render();
+  }
+  byId('t10a').onclick = () => insert('меч', 'редкий');
+  byId('t10b').onclick = () => insert('зелье', 'обычный');
+  byId('t10c').onclick = () => insert('скин', 'легендарный');
+  render();
+})();
+
+/* ── слайд 11 · UPDATE ── */
+(function () {
+  const db = seedDb(itemsSeed);
+  const box = byId('t11box'), ppanel = byId('t11ppanel'), log = byId('t11log');
+  function render() {
+    const p = db.player.rows[0];
+    ppanel.innerHTML =
+      '<div class="pstat"><div class="v">' + p.level + '</div><div class="l">уровень</div></div>' +
+      '<div class="pstat"><div class="v">' + p.coins + '</div><div class="l">монеты</div></div>';
+    box.innerHTML = tblHtml(db.items);
+  }
+  byId('t11lvl').onclick = () => {
+    logSql(log, '<span class="cur">' + esc('UPDATE player SET level = level + 1;') + '</span>');
+    logSql(log, '<span class="lbl">conn.commit()</span>');
+    runSql(db, 'UPDATE player SET level = level + 1');
+    render();
+  };
+  byId('t11sword').onclick = () => {
+    logSql(log, '<span class="cur">' + esc("UPDATE items SET count = count + 1 WHERE name = 'меч';") + '</span>');
+    logSql(log, '<span class="lbl">conn.commit()</span>');
+    runSql(db, "UPDATE items SET count = count + 1 WHERE name = 'меч'");
+    render();
+  };
+  render();
+})();
+
+/* ── слайд 12 · WHERE ── */
+(function () {
+  let db = seedDb(itemsSeed);
+  const box = byId('t12box'), note = byId('t12note');
+  function render() { box.innerHTML = tblHtml(db.items); }
+  byId('t12upd').onclick = () => {
+    const res = runSql(db, 'UPDATE items SET count = 0');
+    note.innerHTML = '<b>Обнулился весь рюкзак</b> — ' + res.n + ' строк. WHERE никто не написал, и база честно выполнила для всех.';
+    render();
+  };
+  byId('t12del').onclick = () => {
+    const res = runSql(db, 'DELETE FROM items');
+    note.innerHTML = '<b>Рюкзак пуст.</b> ' + res.n + ' строк удалено — одна команда без WHERE.';
+    render();
+  };
+  byId('t12sell').onclick = () => {
+    const res = runSql(db, 'DELETE FROM items WHERE id = 3');
+    note.innerHTML = '<b class="ok">Продан один предмет</b> — WHERE id = 3, «кому именно». Затронуто строк: ' + res.n + '.';
+    render();
+  };
+  byId('t12reset').onclick = () => { db = seedDb(itemsSeed); note.innerHTML = ''; render(); };
+  render();
+})();
+
+/* ── слайд 13 · SELECT-консоль ── */
+(function () {
+  const db = seedDb(itemsSeed);
+  const q = byId('t13q'), res = byId('t13res');
+  function run() { res.innerHTML = resultHtml(runSql(db, q.value)); }
+  byId('t13run').onclick = run;
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+  document.querySelectorAll('.cchip[data-q]').forEach(ch => {
+    ch.onclick = () => { q.value = ch.dataset.q; run(); };
+  });
+  run();
+})();
+
+/* ── слайд 14 · ловушки ── */
+(function () {
+  /* табы */
+  const tabs = [...document.querySelectorAll('.tab')];
+  tabs.forEach(t => {
+    t.onclick = () => {
+      tabs.forEach(x => x.classList.toggle('on', x === t));
+      byId('t14commit').classList.toggle('hidden', t.dataset.pane !== 't14commit');
+      byId('t14inject').classList.toggle('hidden', t.dataset.pane !== 't14inject');
+    };
+  });
+
+  /* ловушка 1: commit */
+  let dbC = seedDb(itemsSeed);
+  const boxC = byId('t14box'), noteC = byId('t14note');
+  let autoCommit = true, closed = false;
+  const ins = byId('t14ins'), cm = byId('t14cm'), cl = byId('t14cl');
+  function renderC() {
+    boxC.innerHTML = tblHtml(dbC.items, {
+      row: r => (r.ghost ? ' ghost' : ''),
+      cell: (c, v) => (v === '' ? '<span class="dimcell">—</span>' : esc(v))
+    });
+    cm.innerHTML = 'commit: ' + (autoCommit ? 'вкл' : '<span style="color:var(--bad)">выкл</span>');
+    ins.disabled = dbC.items.rows.some(r => r.ghost) || closed;
+    cl.disabled = closed;
+  }
+  ins.onclick = () => {
+    if (closed) return;
+    const res = runSql(dbC, "INSERT INTO items (name, rarity, count) VALUES ('скин', 'легендарный', 1)");
+    if (res.err) { noteC.innerHTML = '<b>' + esc(res.err) + '</b>'; renderC(); return; }
+    const row = dbC.items.rows[dbC.items.rows.length - 1];
+    if (autoCommit) {
+      noteC.innerHTML = '<b class="ok">INSERT и commit() — предмет записан в файл.</b> Закрой соединение: он на месте.';
+    } else {
+      row.ghost = true;
+      noteC.innerHTML = '<b>Предмет появился</b> — но только в памяти соединения. Файл saves.db про него не знает.';
+    }
+    renderC();
+  };
+  cm.onclick = () => {
+    autoCommit = !autoCommit;
+    noteC.innerHTML = autoCommit
+      ? '<b class="ok">commit включён.</b> Теперь INSERT будет попадать в файл.'
+      : '<b>commit выключен.</b> Нажми INSERT — предмет появится, но не в файле. Затем close().';
+    renderC();
+  };
+  cl.onclick = () => {
+    if (closed) return;
+    closed = true;
+    if (dbC.items.rows.some(r => r.ghost)) {
+      dbC.items.rows = dbC.items.rows.filter(r => !r.ghost);
+      noteC.innerHTML = '<b>Соединение закрылось — предмета нет.</b> «Прогресс откатился»: файл его не содержал, commit не вызван.';
+    } else {
+      noteC.innerHTML = '<b class="ok">Соединение закрыто, всё на месте</b> — изменения были сохранены commit().';
+    }
+    renderC();
+  };
+  byId('t14reset').onclick = () => {
+    dbC = seedDb(itemsSeed);
+    autoCommit = true; closed = false;
+    noteC.innerHTML = ''; renderC();
+  };
+  renderC();
+
+  /* ловушка 2: инъекция */
+  let dbI = seedDb(itemsSeed);
+  const boxI = byId('t14box2'), noteI = byId('t14note2');
+  const evil = "скин'); DELETE FROM items;--";
+  function renderI() { boxI.innerHTML = tblHtml(dbI.items); }
+  byId('t14bad').onclick = () => {
+    dbI.items.rows = [];
+    noteI.innerHTML = '<b>INSERT выполнился — и следом DELETE FROM items.</b> Рюкзак пуст: склеенная строка стала командой.';
+    renderI();
+  };
+  byId('t14good').onclick = () => {
+    dbI.items.rows.push({ id: ++dbI.items.seq, name: evil, rarity: '', count: 1 });
+    noteI.innerHTML = '<b class="ok">Предмет добавлен.</b> В колонке name лежит этот текст — база видит в нём значение, а не команду.';
+    renderI();
+  };
+  byId('t14reset2').onclick = () => { dbI = seedDb(itemsSeed); noteI.innerHTML = ''; renderI(); };
+  renderI();
+})();
+
+/* ── слайд 15 · песочница ── */
+(function () {
+  let db = seedDb(itemsSeed);
+  const q = byId('t15q'), res = byId('t15res');
+  function run() { res.innerHTML = resultHtml(runSql(db, q.value)); }
+  byId('t15run').onclick = run;
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+  document.querySelectorAll('.task[data-q]').forEach(t => {
+    t.onclick = () => { q.value = t.dataset.q; run(); };
+  });
+  byId('t15reset').onclick = () => { db = seedDb(itemsSeed); q.value = 'SELECT * FROM items'; run(); };
+  run();
+})();
+</script>
+</body>
+</html>
