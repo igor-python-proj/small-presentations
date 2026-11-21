@@ -509,11 +509,10 @@
 <span class="c"># открыть базу: файла нет — создастся</span>
 conn = sqlite3.<span class="f">connect</span>(<span class="s">'saves.db'</span>)
 
-conn.<span class="f">execute</span>(
-    <span class="s">"INSERT INTO items (name, rarity, count)"</span>
-    <span class="s">" VALUES (?, ?, ?)"</span>,
-    (<span class="s">"сундук"</span>, <span class="s">"редкий"</span>, <span class="n">1</span>),
-)
+conn.<span class="f">execute</span>(<span class="s">"""</span>
+<span class="s">INSERT INTO items (name, rarity, count)</span>
+<span class="s">VALUES (?, ?, ?)</span>
+<span class="s">"""</span>, (<span class="s">"сундук"</span>, <span class="s">"редкий"</span>, <span class="n">1</span>))
 conn.<span class="f">commit</span>()   <span class="c"># сохранить в файл</span>
 conn.<span class="f">close</span>()</pre>
       <ul>
@@ -543,11 +542,11 @@ conn.<span class="f">close</span>()</pre>
       <p>Игрок что-то делает каждые десять секунд — и каждое действие меняет сохранение. Каждое изменение — это <strong>один UPDATE</strong>.</p>
 <pre>conn.<span class="f">execute</span>(<span class="s">"UPDATE player SET level = level + 1"</span>)
 
-conn.<span class="f">execute</span>(
-    <span class="s">"UPDATE items SET count = count + 1"</span>
-    <span class="s">" WHERE name = ?"</span>,
-    (<span class="s">"меч"</span>,),
-)
+<span class="c"># ("меч",) — кортеж: запятая внутри обязательна</span>
+conn.<span class="f">execute</span>(<span class="s">"""</span>
+<span class="s">UPDATE items SET count = count + 1</span>
+<span class="s">WHERE name = ?</span>
+<span class="s">"""</span>, (<span class="s">"меч"</span>,))
 conn.<span class="f">commit</span>()</pre>
       <ul>
         <li><code>SET level = level + 1</code> — «стало на один больше»: <b>база сама посчитает</b>.</li>
@@ -608,12 +607,12 @@ conn.<span class="f">commit</span>()</pre>
       <h2>SELECT — скажи, <span class="mark">что</span> нужно</h2>
       <p>В Python вы описываете <strong>как</strong> искать: цикл и проверки. В SQL вы просто говорите, <strong>что</strong> вам нужно:</p>
       <div class="tworow">
-<pre><span class="c"># питон: КАК</span>
+<pre><span class="c"># питон: КАК искать</span>
 rare = []
 <span class="p">for</span> it <span class="p">in</span> items:
     <span class="p">if</span> it[<span class="s">'rarity'</span>] == <span class="s">'легендарный'</span>:
         rare.<span class="f">append</span>(it)</pre>
-<pre><span class="c">-- SQL: ЧТО</span>
+<pre><span class="c">-- SQL: ЧТО нужно</span>
 <span class="k">SELECT</span> * <span class="k">FROM</span> items
 <span class="k">WHERE</span> rarity = <span class="s">'легендарный'</span>;</pre>
       </div>
@@ -645,8 +644,10 @@ rare = []
       <h2><span class="mark-bad">commit</span> и SQL-инъекция</h2>
       <div class="note bad" style="margin-top:4px"><b>Забыли commit():</b> изменения живут в памяти соединения. Закрыли игру — прогресс откатился. INSERT / UPDATE / DELETE — и следом <code>commit()</code>.</div>
       <div class="note bad"><b>Склеили строку с запросом:</b> данные стали частью команды. Тролль из чата вписал в ник <code>'); DELETE FROM items;--</code> — рюкзак опустел.</div>
-      <pre>conn.<span class="f">execute</span>(<span class="s">"INSERT INTO items (name, rarity, count)"</span>
-             <span class="s">" VALUES (?, ?, ?)"</span>, (<span class="s">"скин"</span>, <span class="s">"легендарный"</span>, <span class="n">1</span>))
+      <pre>conn.<span class="f">execute</span>(<span class="s">"""</span>
+<span class="s">INSERT INTO items (name, rarity, count)</span>
+<span class="s">VALUES (?, ?, ?)</span>
+<span class="s">"""</span>, (<span class="s">"скин"</span>, <span class="s">"легендарный"</span>, <span class="n">1</span>))
 
 conn.<span class="f">commit</span>()   <span class="c"># ← без этой строки скин исчезнет</span></pre>
       <div class="note ok"><b>Решение — ?:</b> данные идут отдельным параметром. База знает: это значение, а не команда. Любой текст просто ляжет в колонку name.</div>
@@ -715,7 +716,7 @@ conn.<span class="f">commit</span>()   <span class="c"># ← без этой с�
       <div class="kicker ok">Запомнить</div>
       <h2>Сохранение — это <span class="mark">таблица в файле</span></h2>
       <div class="cards">
-        <div class="card"><div class="t">1 · состояние, не история</div><div class="d">Таблица хранит «сейчас»: уровень, монеты, рюкзак. Файл-журнал — это переписанный кусок истории.</div></div>
+        <div class="card"><div class="t">1 · состояние, не история</div><div class="d">Таблица хранит «сейчас»: уровень, монеты, рюкзак. Журнал — история событий: чтобы узнать «что у меня есть», её надо пересчитать.</div></div>
         <div class="card"><div class="t">2 · UPDATE и DELETE</div><div class="d">Меняют и удаляют строки — почти всегда с <code>WHERE id</code>. Без WHERE — всем строкам сразу.</div></div>
         <div class="card"><div class="t">3 · commit()</div><div class="d">«Нажать сохранить». Без него прогресс откатится при закрытии соединения.</div></div>
         <div class="card"><div class="t">4 · ?</div><div class="d">Данные отдельно от запроса: тролли в чате бессильны.</div></div>
@@ -1172,7 +1173,7 @@ byId('t8open').onclick = () => byId('t8reveal').classList.add('open');
   const texts = {
     id: '<b>id · INTEGER PRIMARY KEY</b> — уникальный номер предмета. База назначает его сама и не даст вставить второй раз. По нему продают и прокачивают.',
     name: '<b>name · TEXT NOT NULL</b> — текст и обязательно заполнен. Предмет без имени база не сохранит.',
-    rarity: '<b>rarity · TEXT</b> — текст, можно не заполнять. Правило «только обычный/редкий/легендарный» — тема посложнее, здесь просто текст.',
+    rarity: '<b>rarity · TEXT</b> — текст, можно не заполнять. Жёсткие ограничения на значения — тема посложнее, здесь просто текст.',
     count: '<b>count · INTEGER</b> — сколько штук: в колонке только числа.',
     player: '<b>player</b> — не предметы, а состояние героя: уровень и монеты. В нашем сохранении она из одной строки.'
   };

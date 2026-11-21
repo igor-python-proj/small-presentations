@@ -488,11 +488,10 @@
 <span class="c"># открыть базу: файла нет — создастся</span>
 conn = sqlite3.<span class="f">connect</span>(<span class="s">'database.db'</span>)
 
-conn.<span class="f">execute</span>(
-    <span class="s">"INSERT INTO todos (name, description, done)"</span>
-    <span class="s">" VALUES (?, ?, ?)"</span>,
-    (<span class="s">"разобрать рюкзак"</span>, <span class="s">"после пар"</span>, <span class="n">0</span>),
-)
+conn.<span class="f">execute</span>(<span class="s">"""</span>
+<span class="s">INSERT INTO todos (name, description, done)</span>
+<span class="s">VALUES (?, ?, ?)</span>
+<span class="s">"""</span>, (<span class="s">"разобрать рюкзак"</span>, <span class="s">"после пар"</span>, <span class="n">0</span>))
 conn.<span class="f">commit</span>()   <span class="c"># сохранить в файл</span>
 conn.<span class="f">close</span>()</pre>
       <ul>
@@ -521,12 +520,12 @@ conn.<span class="f">close</span>()</pre>
       <h2>SELECT — скажи, <span class="mark">что</span> нужно</h2>
       <p>В Python вы описываете <strong>как</strong> искать: цикл и проверки. В SQL вы просто говорите, <strong>что</strong> вам нужно:</p>
       <div class="tworow">
-<pre class="c-code"><span class="c"># питон: КАК</span>
+<pre class="c-code"><span class="c"># питон: КАК искать</span>
 left = []
 <span class="p">for</span> t <span class="p">in</span> todos:
     <span class="p">if</span> t[<span class="s">'done'</span>] == <span class="n">0</span>:
         left.<span class="f">append</span>(t)</pre>
-<pre class="c-code"><span class="c">-- SQL: ЧТО</span>
+<pre class="c-code"><span class="c">-- SQL: ЧТО нужно</span>
 <span class="k">SELECT</span> * <span class="k">FROM</span> todos
 <span class="k">WHERE</span> done = <span class="n">0</span>;</pre>
       </div>
@@ -589,8 +588,10 @@ left = []
       <div class="kicker bad">Ловушка №1</div>
       <h2>Забыли <span class="mark-bad">commit()</span> — изменений нет</h2>
       <p>Пока не вызван <code>commit()</code>, изменения живут только <strong>в памяти соединения</strong>. Файл <code>database.db</code> про них не знает.</p>
-<pre>conn.<span class="f">execute</span>(<span class="s">"INSERT INTO todos (name, done)"</span>
-             <span class="s">" VALUES (?, ?)"</span>, (<span class="s">"выспаться"</span>, <span class="n">0</span>))
+<pre>conn.<span class="f">execute</span>(<span class="s">"""</span>
+<span class="s">INSERT INTO todos (name, done)</span>
+<span class="s">VALUES (?, ?)</span>
+<span class="s">"""</span>, (<span class="s">"выспаться"</span>, <span class="n">0</span>))
 
 conn.<span class="f">commit</span>()   <span class="c"># ← сохранить: без этой строки INSERT пропадёт</span>
 conn.<span class="f">close</span>()</pre>
@@ -624,8 +625,8 @@ conn.<span class="f">close</span>()</pre>
       <pre class="badline">выспаться'); DELETE FROM todos;--</pre>
       <p>Склейка строк даст базе <b>две команды вместо одной</b>:</p>
 <pre><span class="k">INSERT</span> <span class="k">INTO</span> todos (name, done) <span class="k">VALUES</span> (<span class="s">'выспаться'</span>);
-<span class="k">DELETE</span> <span class="k">FROM</span> todos; <span class="c">--', 0)  ← после -- это комментарий</span></pre>
-      <p>INSERT добавил дело — а следом DELETE <b>стёр все дела</b>. Троллю даже не нужен был доступ к базе.</p>
+<span class="k">DELETE</span> <span class="k">FROM</span> todos; <span class="c">--', 0)</span></pre>
+      <p>INSERT добавил дело — а следом DELETE <b>стёр все дела</b>. Хвост <code>, 0)</code> после <code>--</code> — уже просто комментарий, база его игнорирует. Троллю даже не нужен был доступ к базе.</p>
       <div class="note ok"><b>Решение — ?:</b> данные идут отдельным параметром. База знает: это значение, а не команда. Весь этот текст просто ляжет в колонку name.</div>
     </div>
     <div>
