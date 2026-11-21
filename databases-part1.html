@@ -592,8 +592,8 @@ left = []
 <pre>conn.<span class="f">execute</span>(<span class="s">"INSERT INTO todos (name, done)"</span>
              <span class="s">" VALUES (?, ?)"</span>, (<span class="s">"выспаться"</span>, <span class="n">0</span>))
 
-conn.<span class="f">commit</span>()   <span class="c"># ← без этой строки</span>
-conn.<span class="f">close</span>()    <span class="c"># строка исчезнет</span></pre>
+conn.<span class="f">commit</span>()   <span class="c"># ← сохранить: без этой строки INSERT пропадёт</span>
+conn.<span class="f">close</span>()</pre>
       <ul>
         <li>Справа: <b>INSERT</b> — строка появилась. Но она в памяти соединения.</li>
         <li>Выключите <b>commit</b> и закройте соединение.</li>
