@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ООП — свой класс: герой игры</title>
+<script>try { if (localStorage.getItem('decks.noArt') === '1') document.documentElement.classList.add('no-art'); } catch (e) {}</script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #090d19;
+    --card: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.13);
+    --text: #eef4ff;
+    --muted: #a8b6d8;
+    --gold: #fbbf24;
+    --emerald: #34d399;
+    --cyan: #22d3ee;
+    --violet: #a78bfa;
+    --red: #f87171;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .blob { position: fixed; width: 520px; height: 520px; filter: blur(110px); opacity: .28; z-index: 0; border-radius: 50%; pointer-events: none; }
+  .b1 { background: #b45309; top: -160px; left: -120px; animation: drift 12s alternate infinite; }
+  .b2 { background: #065f46; bottom: -200px; right: -100px; animation: drift 14s alternate-reverse infinite; }
+  .b3 { background: #6d28d9; top: 40%; left: 55%; width: 320px; height: 320px; opacity: .18; }
+  @keyframes drift { to { transform: translate(60px, 40px) scale(1.1); } }
+
+  header { z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; }
+  .logo { font-weight: 800; }
+  .logo span { background: linear-gradient(90deg, var(--gold), var(--emerald), var(--cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #counter { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #progressWrap { height: 4px; background: rgba(255,255,255,.1); z-index: 2; }
+  #progress { height: 100%; width: 10%; background: linear-gradient(90deg, var(--gold), var(--emerald)); transition: width .35s; }
+
+  main { flex: 1; z-index: 1; display: grid; place-items: center; padding: 10px 20px 6px; min-height: 0; }
+  .deck { width: min(1080px, 100%); }
+  .slide {
+    display: none; background: var(--card); border: 1px solid var(--border);
+    border-radius: 24px; padding: clamp(22px, 3.5vw, 44px);
+    backdrop-filter: blur(14px); min-height: 64vh;
+    max-height: calc(100vh - 190px); overflow-y: auto; scrollbar-width: thin;
+    animation: in .45s ease;
+  }
+  .slide.active { display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px; align-items: center; }
+  .slide.center { grid-template-columns: 1fr; text-align: center; justify-items: center; }
+  @keyframes in { from { opacity: 0; transform: translateY(14px) scale(.99); } }
+  @media (max-width: 820px) { .slide.active { grid-template-columns: 1fr; } body { overflow: auto; } }
+
+  .kicker { display: inline-block; font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--gold); border: 1px solid rgba(251,191,36,.4); padding: 6px 12px; border-radius: 999px; margin-bottom: 14px; }
+  h1 { font-size: clamp(30px, 4.6vw, 54px); line-height: 1.02; margin-bottom: 14px; }
+  h2 { font-size: clamp(24px, 3.2vw, 36px); line-height: 1.12; margin-bottom: 10px; }
+  h1 .grad, h2 .grad { background: linear-gradient(90deg, var(--gold), #f59e0b, var(--emerald)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p { color: var(--muted); font-size: clamp(14px, 1.8vw, 17px); line-height: 1.65; }
+  p + p { margin-top: 10px; }
+  p strong { color: var(--text); }
+  ul { margin-top: 14px; list-style: none; display: grid; gap: 9px; text-align: left; }
+  li { background: rgba(255,255,255,.06); border: 1px solid var(--border); padding: 10px 14px; border-radius: 12px; color: #dbe4ff; font-size: 14.5px; line-height: 1.5; }
+  li b { color: var(--gold); }
+  .analogy { margin-top: 12px; background: linear-gradient(90deg, rgba(52,211,153,.12), rgba(251,191,36,.12));
+    border: 1px dashed rgba(52,211,153,.5); padding: 12px 14px; border-radius: 14px; font-size: 14.5px; line-height: 1.55; color: #dcfce7; text-align: left; }
+  .analogy b { color: var(--emerald); }
+
+  pre { background: #070b18; border: 1px solid rgba(255,255,255,.12); border-radius: 16px;
+    padding: 14px 16px; font-size: 13px; line-height: 1.65; overflow: auto; text-align: left; width: 100%; margin-top: 12px; }
+  pre .hl { background: rgba(52,211,153,.18); border-radius: 6px; }
+  .c-k { color: #c4b5fd; } .c-s { color: #86efac; } .c-f { color: #67e8f9; } .c-c { color: #8a9bb5; }
+  .c-q { color: var(--gold); }
+
+  .art { position: relative; background: rgba(0,0,0,.25); border: 1px solid var(--border); border-radius: 14px; padding: 16px; width: 100%; }
+  .art::before, .art::after { content: ''; position: absolute; width: 14px; height: 14px; border-style: solid; border-color: var(--gold); opacity: .65; pointer-events: none; }
+  .art::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; border-top-left-radius: 4px; }
+  .art::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; border-bottom-right-radius: 4px; }
+  .art svg { width: 100%; height: auto; display: block; }
+  .art pre { margin-top: 0; }
+  .caption { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; line-height: 1.5; }
+
+  .demoBtn { margin-top: 12px; background: linear-gradient(90deg, #059669, #d97706); border: none; font-weight: 700; }
+  .demoBtn.done { background: rgba(255,255,255,.12); font-weight: 400; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 680px; margin: 18px auto 0; }
+  .card { padding: 16px 18px; border-radius: 14px; text-align: left; }
+  .card .t { font-weight: 800; }
+  .card .d { font-size: 14px; margin-top: 6px; }
+  @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+
+  .sprite-abs { position: absolute; bottom: 14px; opacity: .95; pointer-events: none; }
+  .sprite-abs.l { left: 20px; }
+  .sprite-abs.r { right: 20px; }
+  html.no-art .sprite-abs { display: none; }
+  @media (max-width: 700px) { .sprite-abs { display: none; } }
+
+  footer { z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 12px 28px 20px; gap: 12px; }
+  .btns { display: flex; gap: 10px; }
+  button { cursor: pointer; border: 1px solid var(--border); background: rgba(255,255,255,.08); color: var(--text);
+    padding: 10px 18px; border-radius: 999px; font-size: 15px; transition: .2s; }
+  button:hover { background: rgba(255,255,255,.16); transform: translateY(-1px); }
+  button.primary { background: linear-gradient(90deg, #d97706, #059669); border: none; font-weight: 700; }
+  #dots { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.22); border: none; padding: 0; }
+  .dot.on { background: var(--gold); width: 26px; border-radius: 999px; }
+  .hint { color: var(--muted); font-size: 13px; }
+  /* compact: слайды влезают без внутреннего скролла */
+  header { padding: 10px 20px; }
+  footer { padding: 10px 20px 12px; }
+  main { padding: 6px 14px 4px; }
+  .slide { padding: 18px 22px; min-height: 0; }
+  .slide.center { min-height: 56vh; align-content: center; }
+  .slide.active { gap: 18px; }
+  h1 { font-size: clamp(26px, 3.6vw, 34px); margin-bottom: 8px; }
+  h2 { font-size: clamp(20px, 2.6vw, 26px); margin-bottom: 6px; }
+  .kicker { margin-bottom: 8px; }
+  p { font-size: 14px; line-height: 1.55; }
+  p + p { margin-top: 6px; }
+  ul { margin-top: 8px; gap: 6px; }
+  li { padding: 8px 12px; font-size: 13.5px; line-height: 1.45; }
+  .analogy { margin-top: 8px; padding: 8px 12px; font-size: 13.5px; line-height: 1.5; }
+  pre { font-size: 12px; line-height: 1.55; padding: 10px 14px; margin-top: 8px; }
+  .art { padding: 12px; }
+  .art svg { max-height: 46vh; margin: 0 auto; }
+  .caption { font-size: 12px; margin-top: 6px; }
+  .cards { margin-top: 12px; gap: 8px; }
+  .card { padding: 12px 14px; }
+  .card .d { font-size: 13px; margin-top: 4px; }
+  .demoBtn { margin-top: 8px; }
+  /* TV: крупный код, без внутреннего скролла */
+  .deck { width: min(1640px, 96vw); }
+  .slide { max-height: calc(100vh - 150px); overflow: hidden; padding: 18px 24px; }
+  @media (min-width: 821px) { .slide.active:not(.center) { grid-template-columns: 1.25fr .75fr; } }
+  h1 { font-size: clamp(28px, 3.2vw, 54px); }
+  h2 { font-size: clamp(24px, 2.2vw, 34px); }
+  pre { font-size: 16px; line-height: 1.4; padding: 8px 14px; margin-top: 4px; }
+  p { font-size: 15px; line-height: 1.55; }
+  li { font-size: 15px; line-height: 1.5; }
+  .analogy { font-size: 14px; }
+  .caption { font-size: 13px; }
+  @media (min-width: 1600px) {
+    pre { font-size: 18px; }
+    p { font-size: 16px; }
+    li { font-size: 16px; }
+    .analogy { font-size: 15px; }
+    .caption { font-size: 14px; }
+  }
+  @media (max-width: 1100px) {
+    pre { font-size: 13px; }
+    p { font-size: 14px; }
+    li { font-size: 14px; }
+  }
+  @media (max-width: 820px) { .slide { overflow-y: auto; } }
+  /* переключатель схем */
+  button.toggle { font-size: 12px; padding: 6px 12px; opacity: .85; }
+  button.toggle[aria-pressed="false"] { opacity: .55; }
+  html.no-art .art { display: none; }
+  html.no-art .slide.active:not(.center) { grid-template-columns: 1fr; }
+  html.no-art .slide.active:not(.center) > div:not(.art) { width: 100%; max-width: 1200px; justify-self: center; }
+</style>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+
+<header>
+  <div class="logo">ООП · <span>герой игры</span></div>
+  <div id="counter">1 / 10</div>
+</header>
+<div id="progressWrap"><div id="progress"></div></div>
+
+<main>
+<div class="deck">
+
+  <!-- 1 титул -->
+  <section class="slide center active">
+    <div>
+      <div class="kicker">разбор домашки</div>
+      <h1>Свой класс — <span class="grad">герой игры</span></h1>
+      <p>В конце прошлого урока было задание: <strong>класс для персонажа игры</strong>, 1–2 объекта и метод <strong>attack</strong>, в котором у героя уменьшается энергия. Сегодня соберём его по шагам — как собирали машину MyCar.</p>
+      <ul style="max-width:640px;margin:16px auto 0">
+        <li><b>Герой:</b> <b>Hero</b> — имя и энергия</li>
+        <li><b>Действие:</b> <b>attack()</b> — атака тратит 10 энергии</li>
+        <li><b>Правило:</b> текст, код и схема на каждом слайде — про одно и то же</li>
+      </ul>
+    </div>
+    <svg class="sprite-abs l" width="52" viewBox="0 0 27 24" aria-hidden="true"><g shape-rendering="crispEdges"><rect x="9" y="0" width="9" height="3" fill="#fbbf24"/><rect x="6" y="3" width="15" height="3" fill="#fbbf24"/><rect x="6" y="6" width="15" height="3" fill="#0b1220"/><rect x="9" y="6" width="3" height="3" fill="#67e8f9"/><rect x="15" y="6" width="3" height="3" fill="#67e8f9"/><rect x="6" y="9" width="15" height="9" fill="#10b981"/><rect x="12" y="11" width="3" height="5" fill="#fbbf24"/><rect x="3" y="9" width="3" height="7" fill="#059669"/><rect x="21" y="9" width="3" height="7" fill="#059669"/><rect x="9" y="18" width="3" height="6" fill="#0f172a"/><rect x="15" y="18" width="3" height="6" fill="#0f172a"/></g></svg>
+    <svg class="sprite-abs r" width="46" viewBox="0 0 27 24" aria-hidden="true"><g shape-rendering="crispEdges"><rect x="12" y="0" width="3" height="3" fill="#7c3aed"/><rect x="10" y="3" width="7" height="3" fill="#7c3aed"/><rect x="7" y="6" width="13" height="3" fill="#a78bfa"/><rect x="10" y="9" width="7" height="3" fill="#e9b98a"/><rect x="7" y="12" width="13" height="9" fill="#155e75"/><rect x="12" y="14" width="3" height="4" fill="#fbbf24"/><rect x="4" y="12" width="3" height="8" fill="#0e7490"/><rect x="22" y="1" width="5" height="5" fill="#22d3ee"/><rect x="23" y="6" width="3" height="14" fill="#8b5cf6"/></g></svg>
+  </section>
+
+  <!-- 2 класс - шаблон -->
+  <section class="slide">
+    <div>
+      <div class="kicker">повторение · класс</div>
+      <h2>Класс — <span class="grad">шаблон героя</span></h2>
+      <p>Класс — это <strong>шаблон (чертёж)</strong>, по которому создаются объекты. Сам класс объекты не создаёт: объект появляется, когда мы <strong>вызываем класс</strong> — Hero(...).</p>
+      <pre><span class="c-c"># класс - шаблон; сам объекты не создаёт</span>
+<span class="c-k">class</span> <span class="c-f">Hero</span>:
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, name):
+        self.name = name
+        self.energy = <span class="c-s">100</span>
+
+hero1 = <span class="c-f">Hero</span>(<span class="c-s">"Ария"</span>)   <span class="c-c"># объект из чертежа</span>
+hero2 = <span class="c-f">Hero</span>(<span class="c-s">"Кай"</span>)</pre>
+    </div>
+    <div class="art">
+      <svg viewBox="0 0 320 240">
+        <rect x="95" y="10" width="130" height="58" rx="12" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="7 5"/>
+        <text x="160" y="34" fill="#fff" font-size="13" text-anchor="middle" font-weight="bold">class Hero</text>
+        <text x="160" y="52" fill="#a8b6d8" font-size="11" text-anchor="middle">чертёж</text>
+        <line x1="160" y1="68" x2="85" y2="110" stroke="#475569" stroke-width="2"/>
+        <line x1="160" y1="68" x2="235" y2="110" stroke="#475569" stroke-width="2"/>
+        <g><rect x="5" y="110" width="150" height="88" rx="12" fill="#101a30" stroke="#34d399" stroke-width="2"/><text x="80" y="140" fill="#fff" font-size="12" text-anchor="middle" font-weight="bold">hero1</text><text x="80" y="160" fill="#a8b6d8" font-size="11" text-anchor="middle">Ария</text><text x="80" y="180" fill="#fbbf24" font-size="11" text-anchor="middle">энергия: 100</text></g>
+        <g><rect x="165" y="110" width="150" height="88" rx="12" fill="#101a30" stroke="#34d399" stroke-width="2"/><text x="240" y="140" fill="#fff" font-size="12" text-anchor="middle" font-weight="bold">hero2</text><text x="240" y="160" fill="#a8b6d8" font-size="11" text-anchor="middle">Кай</text><text x="240" y="180" fill="#fbbf24" font-size="11" text-anchor="middle">энергия: 100</text></g>
+        <text x="160" y="226" fill="#a8b6d8" font-size="11" text-anchor="middle">Hero(...) — вызов класса: появляется объект</text>
+      </svg>
+      <div class="caption">Чертёж один — карточек сколько угодно. Имя у каждой своё, энергия — как задали в конструкторе.</div>
+    </div>
+  </section>
+
+  <!-- 3 конструктор -->
+  <section class="slide">
+    <div>
+      <div class="kicker">понятие · конструктор</div>
+      <h2><span class="grad">__init__</span> — конструктор</h2>
+      <p>Python вызывает конструктор <strong>сам</strong> — при вызове Hero(...). Внутри <strong>self</strong> — сам создаваемый объект: слева <strong>self.name</strong> — атрибут объекта, справа <strong>name</strong> — параметр.</p>
+      <pre><span class="c-k">class</span> <span class="c-f">Hero</span>:
+    <span class="c-c"># initialize - конструктор; Python вызывает</span>
+    <span class="c-c"># его САМ при Hero(...)</span>
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, name):
+        <span class="c-c"># слева self.name - атрибут объекта,</span>
+        <span class="c-c"># справа name - параметр</span>
+        self.name = name
+        self.energy = <span class="c-s">100</span>
+
+hero1 = <span class="c-f">Hero</span>(<span class="c-s">"Ария"</span>)  <span class="c-c"># вызов класса → __init__</span></pre>
+    </div>
+    <div class="art">
+      <svg viewBox="0 0 320 230">
+        <rect x="70" y="12" width="180" height="196" rx="18" fill="#0f172a" stroke="#fbbf24" stroke-width="2"/>
+        <text x="160" y="40" fill="#fff" font-size="14" text-anchor="middle" font-weight="bold">hero1</text>
+        <rect x="90" y="54" width="140" height="74" rx="12" fill="#2b2306" stroke="#f59e0b"/>
+        <text x="160" y="76" fill="#a8b6d8" font-size="11" text-anchor="middle">ДАННЫЕ</text>
+        <text x="160" y="96" fill="#fff" font-size="12" text-anchor="middle">name: "Ария"</text>
+        <text x="160" y="116" fill="#fff" font-size="12" text-anchor="middle">energy: 100</text>
+        <text x="160" y="152" fill="#86efac" font-size="11" text-anchor="middle">создан вызовом Hero("Ария")</text>
+        <text x="160" y="172" fill="#64748b" font-size="11" text-anchor="middle">__init__ вызвал Python</text>
+        <text x="160" y="194" fill="#a8b6d8" font-size="11" text-anchor="middle">атрибуты — через точку</text>
+      </svg>
+      <div class="caption">После Hero("Ария") в памяти живёт объект hero1 с двумя атрибутами.</div>
+    </div>
+  </section>
+
+  <!-- 4 два героя -->
+  <section class="slide">
+    <div>
+      <div class="kicker">практика · объекты</div>
+      <h2>Два героя — <span class="grad">два объекта</span></h2>
+      <p>Задание просит 1–2 объекта — делаем двух. hero1 и hero2 — независимые карточки: <strong>у каждого свои значения атрибутов</strong>. К атрибуту обращаемся <strong>через точку</strong>.</p>
+      <pre>hero1 = <span class="c-f">Hero</span>(<span class="c-s">"Ария"</span>)
+hero2 = <span class="c-f">Hero</span>(<span class="c-s">"Кай"</span>)
+
+<span class="c-c"># к атрибуту обращаемся через точку;</span>
+<span class="c-c"># у каждого объекта он свой</span>
+<span class="c-f">print</span>(f<span class="c-s">"{hero1.name}: энергия {hero1.energy}"</span>)
+<span class="c-f">print</span>(f<span class="c-s">"{hero2.name}: энергия {hero2.energy}"</span>)
+<span class="c-c"># Ария: энергия 100</span>
+<span class="c-c"># Кай: энергия 100</span></pre>
+    </div>
+    <div class="art">
+      <svg viewBox="0 0 320 240">
+        <g><rect x="5" y="20" width="150" height="150" rx="14" fill="#101a30" stroke="#fbbf24" stroke-width="2"/><text x="80" y="48" fill="#fff" font-size="13" text-anchor="middle" font-weight="bold">Ария</text><text x="80" y="66" fill="#a8b6d8" font-size="11" text-anchor="middle">hero1</text><rect x="20" y="84" width="120" height="14" rx="7" fill="#1e293b"/><rect x="20" y="84" width="120" height="14" rx="7" fill="#fbbf24"/><text x="80" y="118" fill="#fbbf24" font-size="11" text-anchor="middle">энергия: 100</text><text x="80" y="146" fill="#64748b" font-size="10" text-anchor="middle">объект hero1</text></g>
+        <g><rect x="165" y="20" width="150" height="150" rx="14" fill="#101a30" stroke="#22d3ee" stroke-width="2"/><text x="240" y="48" fill="#fff" font-size="13" text-anchor="middle" font-weight="bold">Кай</text><text x="240" y="66" fill="#a8b6d8" font-size="11" text-anchor="middle">hero2</text><rect x="180" y="84" width="120" height="14" rx="7" fill="#1e293b"/><rect x="180" y="84" width="120" height="14" rx="7" fill="#fbbf24"/><text x="240" y="118" fill="#fbbf24" font-size="11" text-anchor="middle">энергия: 100</text><text x="240" y="146" fill="#64748b" font-size="10" text-anchor="middle">объект hero2</text></g>
+        <text x="160" y="206" fill="#a8b6d8" font-size="12" text-anchor="middle">код один — данные у каждого свои</text>
+      </svg>
+      <div class="caption">Имена и значения у карточек разные, а устройство одно — из чертежа Hero.</div>
+    </div>
+  </section>
+
+  <!-- 5 метод attack -->
+  <section class="slide">
+    <div>
+      <div class="kicker">понятие · метод</div>
+      <h2>attack() — <span class="grad">метод героя</span></h2>
+      <p><strong>Метод — функция внутри класса</strong>. Через <strong>self</strong> он видит атрибуты именно своего объекта: код один, а данные у объектов разные. Атака тратит энергию.</p>
+      <pre><span class="c-c"># продолжение: класс Hero - на прошлом слайде</span>
+
+    <span class="c-c"># метод - функция внутри класса</span>
+    <span class="c-k">def</span> <span class="c-f">attack</span>(self):
+        <span class="c-c"># атака тратит энергию</span>
+        self.energy = self.energy - <span class="c-s">10</span>
+        <span class="c-f">print</span>(f<span class="c-s">"{self.name} атакует! Энергия: {self.energy}"</span>)
+
+hero1.<span class="c-f">attack</span>()
+<span class="c-c"># Ария атакует! Энергия: 90</span></pre>
+    </div>
+    <div class="art">
+      <svg viewBox="0 0 320 240">
+        <rect x="95" y="10" width="130" height="40" rx="20" fill="none" stroke="#fbbf24" stroke-width="2"/>
+        <text x="160" y="36" fill="#fbbf24" font-size="13" text-anchor="middle" font-weight="bold">attack()</text>
+        <line x1="130" y1="50" x2="95" y2="88" stroke="#475569" stroke-width="2"/>
+        <line x1="190" y1="50" x2="225" y2="88" stroke="#475569" stroke-width="2"/>
+        <rect x="65" y="88" width="190" height="112" rx="14" fill="#101a30" stroke="#34d399" stroke-width="2"/>
+        <text x="160" y="112" fill="#fff" font-size="12" text-anchor="middle" font-weight="bold">hero1 · Ария</text>
+        <rect x="85" y="126" width="150" height="16" rx="8" fill="#1e293b"/>
+        <rect x="85" y="126" width="135" height="16" rx="8" fill="#fbbf24"/>
+        <text x="160" y="162" fill="#fbbf24" font-size="12" text-anchor="middle">энергия: 100 → 90</text>
+        <text x="160" y="184" fill="#64748b" font-size="10" text-anchor="middle">минус 10 за каждый вызов</text>
+        <text x="160" y="226" fill="#a8b6d8" font-size="11" text-anchor="middle">код один — меняет данные своего объекта</text>
+      </svg>
+      <div class="caption">attack() — действие объекта: вызвали — энергия уменьшилась на 10.</div>
+    </div>
+  </section>
+
+  <!-- 6 self + демо -->
+  <section class="slide">
+    <div>
+      <div class="kicker">понятие · self</div>
+      <h2>self — <span class="grad">этот самый герой</span></h2>
+      <p>Вызываем <strong>hero1.attack()</strong> — энергия падает только у Арии. <strong>self</strong> означает «этот самый объект»: у hero1 это hero1, у hero2 — hero2. Меняется только у того объекта, <strong>через который вызвали метод</strong>.</p>
+      <pre>hero1 = <span class="c-f">Hero</span>(<span class="c-s">"Ария"</span>)
+hero2 = <span class="c-f">Hero</span>(<span class="c-s">"Кай"</span>)
+
+<span id="codeAttack">hero1.<span class="c-f">attack</span>()  <span class="c-c"># меняется только Ария!</span></span>
+<span class="c-f">print</span>(hero1.energy)  <span class="c-c"># 90</span>
+<span class="c-f">print</span>(hero2.energy)  <span class="c-c"># 100</span></pre>
+      <div><button class="demoBtn" id="attackBtn">Атаковать hero1 (−10 энергии)</button></div>
+      <div class="analogy"><b>Кстати:</b> поменять атрибут можно и снаружи — hero1.energy = 1000. Класс это не контролирует, поэтому правильный путь — методы. Как прятать данные правильно — узнаете позже.</div>
+    </div>
+    <div class="art">
+      <svg viewBox="0 0 320 250">
+        <g><rect x="5" y="14" width="150" height="196" rx="14" fill="#101a30" stroke="#fbbf24" stroke-width="2"/><g shape-rendering="crispEdges" transform="translate(66,22)"><rect x="9" y="0" width="9" height="3" fill="#fbbf24"/><rect x="6" y="3" width="15" height="3" fill="#fbbf24"/><rect x="6" y="6" width="15" height="3" fill="#0b1220"/><rect x="9" y="6" width="3" height="3" fill="#67e8f9"/><rect x="15" y="6" width="3" height="3" fill="#67e8f9"/><rect x="6" y="9" width="15" height="9" fill="#10b981"/><rect x="12" y="11" width="3" height="5" fill="#fbbf24"/><rect x="3" y="9" width="3" height="7" fill="#059669"/><rect x="21" y="9" width="3" height="7" fill="#059669"/><rect x="9" y="18" width="3" height="6" fill="#0f172a"/><rect x="15" y="18" width="3" height="6" fill="#0f172a"/></g><text x="80" y="66" fill="#fff" font-size="13" text-anchor="middle" font-weight="bold">Ария</text><text x="80" y="82" fill="#a8b6d8" font-size="10" text-anchor="middle">hero1</text><rect x="20" y="96" width="120" height="16" rx="8" fill="#1e293b"/><rect id="h1bar" x="20" y="96" width="120" height="16" rx="8" fill="#fbbf24"/><text id="h1text" x="80" y="134" fill="#a8b6d8" font-size="11" text-anchor="middle">100 / 100</text><text id="h1note" x="80" y="156" fill="#64748b" font-size="10" text-anchor="middle">attack() не вызван</text><text x="80" y="182" fill="#86efac" font-size="10" text-anchor="middle">self — это hero1</text></g>
+        <g><rect x="165" y="14" width="150" height="196" rx="14" fill="#101a30" stroke="#22d3ee" stroke-width="2"/><g shape-rendering="crispEdges" transform="translate(225,22)"><rect x="12" y="0" width="3" height="3" fill="#7c3aed"/><rect x="10" y="3" width="7" height="3" fill="#7c3aed"/><rect x="7" y="6" width="13" height="3" fill="#a78bfa"/><rect x="10" y="9" width="7" height="3" fill="#e9b98a"/><rect x="7" y="12" width="13" height="9" fill="#155e75"/><rect x="12" y="14" width="3" height="4" fill="#fbbf24"/><rect x="4" y="12" width="3" height="8" fill="#0e7490"/><rect x="22" y="1" width="5" height="5" fill="#22d3ee"/><rect x="23" y="6" width="3" height="14" fill="#8b5cf6"/></g><text x="240" y="66" fill="#fff" font-size="13" text-anchor="middle" font-weight="bold">Кай</text><text x="240" y="82" fill="#a8b6d8" font-size="10" text-anchor="middle">hero2</text><rect x="180" y="96" width="120" height="16" rx="8" fill="#1e293b"/><rect x="180" y="96" width="120" height="16" rx="8" fill="#fbbf24"/><text x="240" y="134" fill="#a8b6d8" font-size="11" text-anchor="middle">100 / 100</text><text x="240" y="156" fill="#34d399" font-size="10" text-anchor="middle">не тронут ✓</text><text x="240" y="182" fill="#64748b" font-size="10" text-anchor="middle">self — это hero2</text></g>
+        <text x="160" y="238" fill="#a8b6d8" font-size="12" text-anchor="middle">вызов один — меняется только тот, через кого вызвали</text>
+      </svg>
+      <div class="caption">Кнопка — иллюстрация к коду слева: каждый вызов hero1.attack() отнимает 10 энергии.</div>
+    </div>
+  </section>
+
+  <!-- 7 всё - классы -->
+  <section class="slide">
+    <div>
+      <div class="kicker">кстати</div>
+      <h2>Всё вокруг — <span class="grad">классы</span></h2>
+      <p><strong>type(hero1)</strong> покажет класс Hero. У встроенных типов тоже есть классы: у строки — str, у списка — list. Получается, мы пользуемся классами с самых первых уроков.</p>
+      <pre><span class="c-f">print</span>(<span class="c-f">type</span>(hero1))
+<span class="c-c"># &lt;class '__main__.Hero'&gt;</span>
+
+<span class="c-c"># у встроенных типов тоже есть классы:</span>
+<span class="c-f">print</span>(<span class="c-f">type</span>(<span class="c-s">"привет"</span>), <span class="c-f">type</span>([1, 2, 3]))
+<span class="c-c"># &lt;class 'str'&gt; &lt;class 'list'&gt;</span></pre>
+    </div>
+    <div class="art">
+      <svg viewBox="0 0 320 230">
+        <g><rect x="10" y="14" width="120" height="40" rx="10" fill="#101a30" stroke="#34d399" stroke-width="2"/><text x="70" y="40" fill="#fff" font-size="12" text-anchor="middle">hero1</text></g>
+        <line x1="130" y1="34" x2="172" y2="34" stroke="#475569" stroke-width="2"/><polygon points="172,34 162,29 162,39" fill="#475569"/>
+        <g><rect x="180" y="14" width="130" height="40" rx="10" fill="#2b2306" stroke="#fbbf24" stroke-width="2"/><text x="245" y="40" fill="#fbbf24" font-size="12" text-anchor="middle">class Hero</text></g>
+        <g><rect x="10" y="74" width="120" height="40" rx="10" fill="#101a30" stroke="#34d399" stroke-width="2"/><text x="70" y="100" fill="#fff" font-size="12" text-anchor="middle">"привет"</text></g>
+        <line x1="130" y1="94" x2="172" y2="94" stroke="#475569" stroke-width="2"/><polygon points="172,94 162,89 162,99" fill="#475569"/>
+        <g><rect x="180" y="74" width="130" height="40" rx="10" fill="#083344" stroke="#22d3ee" stroke-width="2"/><text x="245" y="100" fill="#67e8f9" font-size="12" text-anchor="middle">class str</text></g>
+        <g><rect x="10" y="134" width="120" height="40" rx="10" fill="#101a30" stroke="#34d399" stroke-width="2"/><text x="70" y="160" fill="#fff" font-size="12" text-anchor="middle">[1, 2, 3]</text></g>
+        <line x1="130" y1="154" x2="172" y2="154" stroke="#475569" stroke-width="2"/><polygon points="172,154 162,149 162,159" fill="#475569"/>
+        <g><rect x="180" y="134" width="130" height="40" rx="10" fill="#2e1065" stroke="#a78bfa" stroke-width="2"/><text x="245" y="160" fill="#c4b5fd" font-size="12" text-anchor="middle">class list</text></g>
+        <text x="160" y="210" fill="#a8b6d8" font-size="12" text-anchor="middle">type(объект) → его класс</text>
+      </svg>
+      <div class="caption">Свой класс Hero устроен так же, как знакомые str и list.</div>
+    </div>
+  </section>
+
+  <!-- 8 весь код -->
+  <section class="slide">
+    <div>
+      <div class="kicker">собираем</div>
+      <h2>Весь код <span class="grad">целиком</span></h2>
+      <p>Всё из урока в одном куске — можно скопировать в PyCharm и запустить.</p>
+      <pre><span class="c-k">class</span> <span class="c-f">Hero</span>:
+    <span class="c-c"># конструктор - Python вызывает его сам при Hero(...)</span>
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, name):
+        self.name = name
+        self.energy = <span class="c-s">100</span>
+
+    <span class="c-c"># метод видит атрибуты именно своего объекта</span>
+    <span class="c-k">def</span> <span class="c-f">attack</span>(self):
+        self.energy = self.energy - <span class="c-s">10</span>
+        <span class="c-f">print</span>(f<span class="c-s">"{self.name} атакует! Энергия: {self.energy}"</span>)
+
+hero1 = <span class="c-f">Hero</span>(<span class="c-s">"Ария"</span>)
+hero2 = <span class="c-f">Hero</span>(<span class="c-s">"Кай"</span>)
+hero1.<span class="c-f">attack</span>()  <span class="c-c"># Ария атакует! Энергия: 90</span></pre>
+    </div>
+    <div class="art">
+      <svg viewBox="0 0 320 210">
+        <rect x="5" y="10" width="310" height="160" rx="12" fill="#070b18" stroke="#fbbf24" stroke-width="2"/>
+        <circle cx="27" cy="30" r="5" fill="#f87171"/><circle cx="47" cy="30" r="5" fill="#fbbf24"/><circle cx="67" cy="30" r="5" fill="#34d399"/>
+        <text x="20" y="62" fill="#fbbf24" font-size="12" font-family="Consolas, 'Courier New', monospace">&gt;&gt;&gt; hero1.attack()</text>
+        <text x="20" y="86" fill="#86efac" font-size="12" font-family="Consolas, 'Courier New', monospace">Ария атакует! Энергия: 90</text>
+        <text x="20" y="110" fill="#fbbf24" font-size="12" font-family="Consolas, 'Courier New', monospace">&gt;&gt;&gt; hero2.energy</text>
+        <text x="20" y="134" fill="#86efac" font-size="12" font-family="Consolas, 'Courier New', monospace">100</text>
+        <text x="160" y="196" fill="#a8b6d8" font-size="11" text-anchor="middle">hero2.energy — 100: Кая не трогали</text>
+      </svg>
+      <div class="caption">Домашка — тот же код со своим персонажем: поменяйте имя и добавьте своё.</div>
+    </div>
+  </section>
+
+  <!-- 9 твоя очередь -->
+  <section class="slide">
+    <div>
+      <div class="kicker">практика · домашка</div>
+      <h2>Твоя очередь — <span class="grad">свой герой</span></h2>
+      <p>Не обязательно герой: пусть это будет рыцарь, маг или питомец — структура та же.</p>
+      <ul>
+        <li><b>Основное:</b> свой класс персонажа — имя придумайте сами</li>
+        <li><b>1–2 объекта:</b> у каждого свои значения атрибутов</li>
+        <li><b>Метод attack:</b> у героя уменьшается энергия</li>
+        <li><b>По желанию:</b> метод <b>heal()</b> — возвращает энергию: self.energy = self.energy + 10</li>
+      </ul>
+    </div>
+    <div class="art">
+      <pre><span class="c-k">class</span> <span class="c-q">???</span>:
+    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, name):
+        self.name = name
+        self.energy = <span class="c-s">100</span>
+
+    <span class="c-k">def</span> <span class="c-f">attack</span>(self):
+        self.energy = self.energy - <span class="c-s">10</span>
+        <span class="c-f">print</span>(f<span class="c-s">"{self.name} атакует!"</span>)</pre>
+      <div class="caption">Замени ??? на имя своего класса — и допиши своё.</div>
+    </div>
+  </section>
+
+  <!-- 10 итог -->
+  <section class="slide center">
+    <div>
+      <div class="kicker">запомнить за 10 секунд</div>
+      <h2>Свой класс — <span class="grad">это просто</span></h2>
+      <p>Вся история — про одних и тех же героев: класс один, карточек две, действие одно. Если узнаёшь их в каждой карточке — задание уже почти готово.</p>
+      <div class="cards">
+        <div class="card" style="background:#065f46"><div class="t">1 · Класс</div><div class="d" style="color:#d1fae5">Hero — чертёж: какие поля и действия есть у любого героя.</div></div>
+        <div class="card" style="background:#92400e"><div class="t">2 · Объект</div><div class="d" style="color:#fef3c7">hero1 и hero2 — заполненные карточки, у каждой свои значения.</div></div>
+        <div class="card" style="background:#155e75"><div class="t">3 · Конструктор</div><div class="d" style="color:#cffafe">__init__ — Python вызывает его сам при Hero(...).</div></div>
+        <div class="card" style="background:#5b21b6"><div class="t">4 · Метод и self</div><div class="d" style="color:#ede9fe">attack() меняет энергию только у того, кого вызвали.</div></div>
+      </div>
+      <p style="margin-top:18px">Имя и энергия — <strong>данные в объекте</strong>, поведение — <strong>в методах</strong>. В следующий раз разберём, как прятать данные от случайных изменений.</p>
+    </div>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="btns">
+    <button id="prev">← Назад</button>
+    <button id="next" class="primary">Далее →</button>
+    <button id="schemasBtn" class="toggle" aria-pressed="true" title="Показать или скрыть схемы (S)">схемы: вкл</button>
+  </div>
+  <div id="dots"></div>
+  <div class="hint">стрелки ← → / пробел</div>
+</footer>
+
+<script>
+let i = 0;
+const slides = [...document.querySelectorAll('.slide')];
+const dotsBox = document.getElementById('dots');
+const counter = document.getElementById('counter');
+const progress = document.getElementById('progress');
+const schemasBtn = document.getElementById('schemasBtn');
+let noArt = document.documentElement.classList.contains('no-art');
+function applyNoArt() {
+  document.documentElement.classList.toggle('no-art', noArt);
+  schemasBtn.setAttribute('aria-pressed', String(!noArt));
+  schemasBtn.textContent = noArt ? 'схемы: выкл' : 'схемы: вкл';
+}
+function toggleNoArt() {
+  noArt = !noArt;
+  try { localStorage.setItem('decks.noArt', noArt ? '1' : '0'); } catch (e) {}
+  applyNoArt();
+}
+schemasBtn.addEventListener('click', toggleNoArt);
+applyNoArt();
+slides.forEach((_, n) => {
+  const d = document.createElement('button');
+  d.className = 'dot' + (n === 0 ? ' on' : '');
+  d.setAttribute('aria-label', 'слайд ' + (n + 1));
+  d.onclick = () => go(n);
+  dotsBox.appendChild(d);
+});
+const dots = [...dotsBox.children];
+function go(n) {
+  i = (n + slides.length) % slides.length;
+  slides.forEach((s, k) => s.classList.toggle('active', k === i));
+  dots.forEach((d, k) => d.classList.toggle('on', k === i));
+  counter.textContent = (i + 1) + ' / ' + slides.length;
+  progress.style.width = ((i + 1) / slides.length * 100) + '%';
+}
+document.getElementById('next').onclick = () => go(i + 1);
+document.getElementById('prev').onclick = () => go(i - 1);
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(i + 1); }
+  if (e.key === 'ArrowLeft') go(i - 1);
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 's' || e.key === 'S' || e.key === 'ы' || e.key === 'Ы')) toggleNoArt();
+});
+let x0 = null;
+window.addEventListener('touchstart', e => x0 = e.touches[0].clientX, {passive:true});
+window.addEventListener('touchend', e => {
+  if (x0 === null) return;
+  const dx = e.changedTouches[0].clientX - x0;
+  if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
+  x0 = null;
+}, {passive:true});
+// демо: hero1.attack() — иллюстрация к коду
+(function () {
+  const btn = document.getElementById('attackBtn');
+  if (!btn) return;
+  let energy = 100;
+  const bar = document.getElementById('h1bar');
+  const txt = document.getElementById('h1text');
+  const note = document.getElementById('h1note');
+  const code = document.getElementById('codeAttack');
+  function render() {
+    bar.setAttribute('width', String(energy * 120 / 100));
+    bar.setAttribute('fill', energy > 30 ? '#fbbf24' : '#f87171');
+    txt.textContent = energy + ' / 100';
+    const times = (100 - energy) / 10;
+    note.textContent = times === 0 ? 'attack() не вызван' : 'attack() вызван ×' + times;
+    code.classList.toggle('hl', energy < 100);
+    btn.textContent = energy === 0 ? 'Вернуть как было' : 'Атаковать hero1 (−10 энергии)';
+    btn.classList.toggle('done', energy === 0);
+  }
+  btn.onclick = () => {
+    energy = energy === 0 ? 100 : energy - 10;
+    render();
+  };
+  render();
+})();
+go(0);
+</script>
+</body>
+</html>
