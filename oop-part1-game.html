@@ -71,7 +71,6 @@
     padding: 14px 16px; font-size: 13px; line-height: 1.65; overflow: auto; text-align: left; width: 100%; margin-top: 12px; }
   pre .hl { background: rgba(52,211,153,.18); border-radius: 6px; }
   .c-k { color: #c4b5fd; } .c-s { color: #86efac; } .c-f { color: #67e8f9; } .c-c { color: #8a9bb5; }
-  .c-q { color: var(--gold); }
 
   .art { position: relative; background: rgba(0,0,0,.25); border: 1px solid var(--border); border-radius: 14px; padding: 16px; width: 100%; }
   .art::before, .art::after { content: ''; position: absolute; width: 14px; height: 14px; border-style: solid; border-color: var(--gold); opacity: .65; pointer-events: none; }
@@ -411,20 +410,19 @@ hero1.<span class="c-f">attack</span>()  <span class="c-c"># Ария атаку
       <ul>
         <li><b>Основное:</b> свой класс персонажа — имя придумайте сами</li>
         <li><b>1–2 объекта:</b> у каждого свои значения атрибутов</li>
-        <li><b>Метод attack:</b> у героя уменьшается энергия</li>
+        <li><b>Метод attack:</b> у героя энергия уменьшается на 10</li>
         <li><b>По желанию:</b> метод <b>heal()</b> — возвращает энергию: self.energy = self.energy + 10</li>
       </ul>
     </div>
     <div class="art">
-      <pre><span class="c-k">class</span> <span class="c-q">???</span>:
-    <span class="c-k">def</span> <span class="c-f">__init__</span>(self, name):
-        self.name = name
-        self.energy = <span class="c-s">100</span>
+      <pre>hero1 = <span class="c-f">MyHero</span>(<span class="c-s">"Ария"</span>)
+hero2 = <span class="c-f">MyHero</span>(<span class="c-s">"Кай"</span>)
 
-    <span class="c-k">def</span> <span class="c-f">attack</span>(self):
-        self.energy = self.energy - <span class="c-s">10</span>
-        <span class="c-f">print</span>(f<span class="c-s">"{self.name} атакует!"</span>)</pre>
-      <div class="caption">Замени ??? на имя своего класса — и допиши своё.</div>
+<span class="c-f">print</span>(hero1.name, hero1.energy)  <span class="c-c"># Ария 100</span>
+hero1.<span class="c-f">attack</span>()
+<span class="c-f">print</span>(hero1.name, hero1.energy)  <span class="c-c"># Ария 90</span>
+<span class="c-f">print</span>(hero2.name, hero2.energy)  <span class="c-c"># Кай 100</span></pre>
+      <div class="caption">Справа — проверка, а не решение.<br>MyHero — заглушка вместо имени класса; attack() и тело — ваши.</div>
     </div>
   </section>
 
